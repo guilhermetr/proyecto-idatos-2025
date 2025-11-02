@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tablero Integrado MGAP · Clima · Producción · Precios</title>
+  <style>
+    :root{
+      --bg-app:#0f172a;--bg-surface:#1e2538;--bg-surface-alt:#2a344d;--border-color:rgba(255,255,255,.08);
+      --text-primary:#f8fafc;--text-dim:#94a3b8;--accent:#38bdf8;--accent-bg:rgba(56,189,248,.12);
+      --radius-lg:1rem;--radius-md:.5rem;--radius-sm:.25rem;
+      --fs-300:.8rem;--fs-400:.9rem;--fs-500:1rem;--fs-600:1.125rem;--fs-700:1.25rem;--fs-800:1.5rem;--fs-900:2rem;
+      --space-2xs:.25rem;--space-xs:.5rem;--space-sm:.75rem;--space-md:1rem;--space-lg:1.5rem;--space-xl:2rem;
+      --card-bg-gradient:radial-gradient(circle at 20% 20%,rgba(56,189,248,.15) 0%,rgba(30,37,56,0) 70%);
+      --focus-ring:0 0 0 2px rgba(56,189,248,.5)
+    }
+
+    *,*::before,*::after{box-sizing:border-box}
+    body{
+      background:var(--bg-app);
+      color:var(--text-primary);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Inter","Roboto","Segoe UI","Helvetica Neue",Arial,sans-serif;
+      margin:0;
+      line-height:1.4
+    }
+
+    .app-header{
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:space-between;
+      align-items:flex-start;
+      padding:var(--space-md) var(--space-lg);
+      border-bottom:1px solid var(--border-color);
+      background:rgba(15,23,42,.6);
+      backdrop-filter:blur(8px);
+      position:sticky;
+      top:0;
+      z-index:100
+    }
+    .app-header__titles h1{
+      font-size:var(--fs-800);
+      font-weight:600;
+      margin:0
+    }
+    .subtitle{
+      margin-top:var(--space-2xs);
+      color:var(--text-dim);
+      font-size:var(--fs-400)
+    }
+    .app-header__global-controls{
+      display:flex;
+      gap:var(--space-sm);
+      flex-shrink:0;
+      flex-wrap:wrap
+    }
+
+    .layout{
+      display:grid;
+      grid-template-columns:360px 1fr; /* ancho mayor para filtros / fechas */
+      gap:var(--space-lg);
+      padding:var(--space-lg)
+    }
+    @media (min-width:1400px){
+      .layout{grid-template-columns:420px 1fr}
+    }
+    @media (max-width:900px){
+      .layout{grid-template-columns:1fr}
+    }
+
+    .sidebar{
+      display:flex;
+      flex-direction:column;
+      gap:var(--space-lg);
+      position:sticky;
+      top:88px;
+      align-self:start
+    }
+    .filter-block,.meta-block{
+      background:var(--bg-surface);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-lg);
+      padding:var(--space-md);
+      box-shadow:0 16px 40px rgba(0,0,0,.6)
+    }
+    .filter-block__title{
+      font-size:var(--fs-600);
+      font-weight:500;
+      margin:0 0 var(--space-md)
+    }
+
+    .form-field{
+      display:flex;
+      flex-direction:column;
+      margin-bottom:var(--space-md);
+      font-size:var(--fs-400)
+    }
+    .form-field--row{
+      display:flex;
+      flex-direction:row;
+      justify-content:space-between;
+      gap:var(--space-sm)
+    }
+    .form-field--row > div{
+      flex:1 1 0;
+      min-width:0;
+    }
+
+    .form-label{
+      color:var(--text-dim);
+      font-size:var(--fs-300);
+      margin-bottom:var(--space-2xs)
+    }
+    .form-input{
+      background:var(--bg-surface-alt);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-md);
+      padding:var(--space-sm) var(--space-md);
+      color:var(--text-primary);
+      font-size:var(--fs-500);
+      width:100%;
+      min-height:2.5rem
+    }
+    .form-input:focus{
+      outline:0;
+      box-shadow:var(--focus-ring);
+      border-color:var(--accent)
+    }
+
+    .btn{
+      font-size:var(--fs-400);
+      border-radius:var(--radius-md);
+      padding:var(--space-sm) var(--space-md);
+      border:1px solid transparent;
+      cursor:pointer;
+      line-height:1.2;
+      font-weight:500;
+      min-height:2.5rem;
+      background:none;
+      color:var(--text-primary)
+    }
+    .btn-primary{
+      background:var(--accent);
+      color:#0f172a;
+      border-color:var(--accent)
+    }
+    .btn-outline{
+      background:transparent;
+      border-color:var(--border-color)
+    }
+    .btn-ghost{
+      background:transparent;
+      border-color:transparent;
+      color:var(--text-dim)
+    }
+    .btn-block{width:100%}
+    .btn:focus{
+      outline:0;
+      box-shadow:var(--focus-ring)
+    }
+
+    .meta-list{
+      color:var(--text-dim);
+      font-size:var(--fs-400);
+      padding-left:1rem;
+      margin:0
+    }
+    .meta-list li{margin-bottom:var(--space-sm)}
+
+    .main{
+      display:flex;
+      flex-direction:column;
+      gap:var(--space-lg)
+    }
+
+    .cards-row{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));
+      gap:var(--space-md)
+    }
+    .card{
+      background:var(--bg-surface);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-lg);
+      padding:var(--space-md);
+      box-shadow:0 24px 64px rgba(0,0,0,.7);
+      position:relative;
+      overflow:hidden
+    }
+    .card::after{
+      content:"";
+      position:absolute;
+      inset:0;
+      background-image:var(--card-bg-gradient);
+      mix-blend-mode:screen;
+      opacity:.6;
+      pointer-events:none
+    }
+    .card__header{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      font-size:var(--fs-400);
+      color:var(--text-dim)
+    }
+    .card__unit{
+      background:var(--accent-bg);
+      color:var(--accent);
+      border-radius:var(--radius-sm);
+      padding:0 var(--space-xs);
+      font-size:var(--fs-300);
+      line-height:1.4;
+      border:1px solid rgba(56,189,248,.4)
+    }
+    .card__value{
+      margin-top:var(--space-xs);
+      font-size:var(--fs-900);
+      font-weight:600
+    }
+    .card__footer{
+      margin-top:var(--space-xs);
+      font-size:var(--fs-300);
+      color:var(--text-dim)
+    }
+
+    .charts-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(min(400px,100%),1fr));
+      gap:var(--space-md)
+    }
+    .chart-card{
+      background:var(--bg-surface);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-lg);
+      padding:var(--space-md);
+      box-shadow:0 24px 64px rgba(0,0,0,.7);
+      overflow-x:auto
+    }
+    .chart-card--wide{grid-column:1 / -1}
+    .chart-card__header h3{
+      font-size:var(--fs-600);
+      font-weight:500;
+      margin:0
+    }
+    .chart-card__sub{
+      margin:var(--space-2xs) 0 var(--space-sm);
+      font-size:var(--fs-300);
+      color:var(--text-dim)
+    }
+
+    .table-section{
+      background:var(--bg-surface);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-lg);
+      padding:var(--space-md) var(--space-md) var(--space-lg);
+      box-shadow:0 24px 64px rgba(0,0,0,.7)
+    }
+    .table-header h3{
+      font-size:var(--fs-600);
+      font-weight:500;
+      margin:0 0 var(--space-2xs)
+    }
+    .table-header p{
+      color:var(--text-dim);
+      font-size:var(--fs-300);
+      margin:0 0 var(--space-md)
+    }
+    .table-wrapper{
+      max-height:300px;
+      overflow:auto;
+      border-radius:var(--radius-md);
+      border:1px solid var(--border-color)
+    }
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:var(--fs-400);
+      min-width:700px
+    }
+    thead{
+      background:var(--bg-surface-alt);
+      position:sticky;
+      top:0;
+      z-index:2
+    }
+    th{
+      text-align:left;
+      font-weight:500;
+      color:var(--text-primary);
+      padding:var(--space-sm) var(--space-md);
+      border-bottom:1px solid var(--border-color);
+      white-space:nowrap;
+      font-size:var(--fs-300)
+    }
+    tbody tr:nth-child(even){background:rgba(255,255,255,.02)}
+    td{
+      padding:var(--space-sm) var(--space-md);
+      color:var(--text-dim);
+      border-bottom:1px solid var(--border-color);
+      vertical-align:top;
+      font-size:var(--fs-400)
+    }
+
+    .provenance-section{
+      background:var(--bg-surface);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-lg);
+      padding:var(--space-md);
+      box-shadow:0 24px 64px rgba(0,0,0,.7);
+      font-size:var(--fs-400)
+    }
+    .provenance-section h3{
+      margin:0 0 var(--space-sm);
+      font-size:var(--fs-600)
+    }
+    .prov-list{
+      color:var(--text-dim);
+      font-size:var(--fs-400);
+      padding-left:1rem;
+      margin:0
+    }
+    .prov-list li{margin-bottom:var(--space-xs)}
+
+    .app-footer{
+      border-top:1px solid var(--border-color);
+      background:rgba(15,23,42,.4);
+      padding:var(--space-lg);
+      font-size:var(--fs-300);
+      color:var(--text-dim);
+      line-height:1.5;
+      margin-top:var(--space-xl);
+      text-align:center
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__titles">
+      <h1>Integración de datos frutícolas</h1>
+      <p class="subtitle">Clima (INUMET), Producción (INIA / INE), Precios (consumidor)</p>
+    </div>
+    <div class="app-header__global-controls">
+      <button id="refreshDataBtn" class="btn btn-outline">Actualizar desde las fuentes</button>
+      <button id="exportCsvBtn" class="btn btn-outline">Descargar CSV</button>
+      <button id="resetFiltersBtn" class="btn btn-ghost">Reiniciar filtros</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section class="filter-block">
+        <h2 class="filter-block__title">Filtros</h2>
+
+        <label class="form-field">
+          <span class="form-label">Fruta / variedad</span>
+          <select id="fruitSelect" class="form-input"></select>
+        </label>
+
+        <label class="form-field">
+          <span class="form-label">Región / zona</span>
+          <select id="regionSelect" class="form-input"></select>
+        </label>
+
+        <div class="form-field form-field--row">
+          <div>
+            <span class="form-label">Desde</span>
+            <input type="date" id="startDate" class="form-input" />
+          </div>
+          <div>
+            <span class="form-label">Hasta</span>
+            <input type="date" id="endDate" class="form-input" />
+          </div>
+        </div>
+
+        <label class="form-field">
+          <span class="form-label">Agregación temporal</span>
+          <select id="aggSelect" class="form-input">
+            <option value="day">Día</option>
+            <option value="fortnight">Quincena</option>
+            <option value="month" selected>Mes</option>
+          </select>
+        </label>
+
+        <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
+      </section>
+
+      <section class="meta-block">
+        <h2 class="filter-block__title">Notas metodológicas</h2>
+        <ul class="meta-list">
+          <li>Los datos se descargan directamente desde las fuentes públicas usando fetch() en tu navegador.</li>
+          <li>No hay backend ni base persistente: la integración de clima + producción + precios se hace localmente en el navegador.</li>
+          <li>Si alguna fuente bloquea CORS o requiere scraping HTML, esos datos no aparecerán hasta que se publiquen como CSV accesible.</li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="main">
+      <section class="cards-row" aria-label="Indicadores resumidos">
+        <article class="card">
+          <header class="card__header">
+            <span class="card__title">Temp. máx. promedio</span>
+            <span class="card__unit">°C</span>
+          </header>
+          <div class="card__value" id="kpiTempMax">--</div>
+          <footer class="card__footer" id="kpiTempMeta">Promedio</footer>
+        </article>
+
+        <article class="card">
+          <header class="card__header">
+            <span class="card__title">Producción total</span>
+            <span class="card__unit">toneladas</span>
+          </header>
+          <div class="card__value" id="kpiProduction">--</div>
+          <footer class="card__footer" id="kpiProdMeta">Suma</footer>
+        </article>
+
+        <article class="card">
+          <header class="card__header">
+            <span class="card__title">Precio promedio</span>
+            <span class="card__unit">$ / kg</span>
+          </header>
+          <div class="card__value" id="kpiPrice">--</div>
+          <footer class="card__footer" id="kpiPriceMeta">Promedio</footer>
+        </article>
+      </section>
+
+      <section class="charts-grid">
+        <div class="chart-card">
+          <header class="chart-card__header">
+            <h3>Temperatura máxima diaria</h3>
+            <p class="chart-card__sub">Datos climáticos (INUMET). Eje Y: °C.</p>
+          </header>
+          <canvas id="tempChart" width="600" height="240"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <header class="chart-card__header">
+            <h3>Producción estimada</h3>
+            <p class="chart-card__sub">Rendimiento por zona (INIA / INE). Eje Y: t.</p>
+          </header>
+          <canvas id="prodChart" width="600" height="240"></canvas>
+        </div>
+
+        <div class="chart-card chart-card--wide">
+          <header class="chart-card__header">
+            <h3>Precio al consumidor</h3>
+            <p class="chart-card__sub">Serie diaria. Eje Y: $/kg.</p>
+          </header>
+          <canvas id="priceChart" width="1200" height="240"></canvas>
+        </div>
+      </section>
+
+      <section class="table-section">
+        <div class="table-header">
+          <h3>Observaciones integradas</h3>
+          <p>Cada fila resume clima, producción, precio y trazabilidad de origen para la misma fruta / zona / período.</p>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="dataTable">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Zona</th>
+                <th>Fruta</th>
+                <th>Lluvia (mm)</th>
+                <th>T. mín (°C)</th>
+                <th>T. máx (°C)</th>
+                <th>Producción (t)</th>
+                <th>Precio ($/kg)</th>
+                <th>Fuente</th>
+              </tr>
+            </thead>
+            <tbody id="dataTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="provenance-section">
+        <h3>Trazabilidad de las fuentes</h3>
+        <ul class="prov-list" id="provenanceList">
+          <li>Clima horario / diario: INUMET (temperatura, lluvia).</li>
+          <li>Producción / Rendimientos / Precios consumidor: INIA / INE / MEF (CSV publicado).</li>
+          <li>No se almacena información en el servidor; todo se procesa en el navegador.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <footer class="app-footer">
+    <p>Este tablero descarga los CSV públicos, normaliza columnas, cruza clima con producción y precios por día y región, y lo muestra filtrable. Todo ocurre en tu navegador.</p>
+    <p>Ministerio de Ganadería, Agricultura y Pesca · Integración de vistas virtuales</p>
+  </footer>
+
+ <script>
+  // =====================================================
+  // 0. Config: rutas locales
+  // =====================================================
+
+  const URL_TEMPERATURA_LOCAL = "./inumet_temperatura_del_aire.csv";
+  const URL_LLUVIA_LOCAL = "./inumet_precipitacion_acumulada_horaria.csv";
+
+
+  // =====================================================
+  // 1. CSV parsing y normalización
+  // =====================================================
+
+  function parseCsvToArrays(text, delimiter){
+    const rows=[];
+    let row=[], cell="", inQuotes=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      const next=text[i+1];
+
+      if(ch === '"'){
+        if(inQuotes && next === '"'){
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if(ch === delimiter && !inQuotes){
+        row.push(cell);
+        cell="";
+      } else if((ch === "\n" || ch === "\r") && !inQuotes){
+        if(ch === "\r" && next === "\n"){ i++; }
+        row.push(cell);
+        cell="";
+        if(row.length>1 || row[0] !== ""){ rows.push(row); }
+        row=[];
+      } else {
+        cell += ch;
+      }
+    }
+    if(cell !== "" || row.length>0){
+      row.push(cell);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function arraysToObjects(table){
+    if(!table.length) return [];
+    const headers = table[0];
+    const out=[];
+    for(let i=1;i<table.length;i++){
+      const rowArr = table[i];
+      const obj={};
+      for(let j=0;j<headers.length;j++){
+        obj[headers[j] ?? `col_${j}`] = rowArr[j] ?? "";
+      }
+      out.push(obj);
+    }
+    return out;
+  }
+
+  function normalizeHeaderName(h){
+    return h.toLowerCase()
+      .replace(/\s+/g,'_')
+      .replace(/[^a-z0-9_]/g,'')
+      .trim();
+  }
+
+  function normalizeAndTag(rows, sourceName){
+    const out=[];
+    for(const row of rows){
+      const normRow={};
+      for(const [k,v] of Object.entries(row)){
+        const nk = normalizeHeaderName(k);
+        normRow[nk] = v;
+      }
+      normRow["origen_fuente"]=sourceName;
+      out.push(normRow);
+    }
+    return out;
+  }
+
+  async function fetchCsvAndNormalize(url, sourceName){
+    try{
+      const resp = await fetch(url,{cache:"no-store"});
+      if(!resp.ok) throw new Error("HTTP "+resp.status);
+      const text = await resp.text();
+
+      // intentar ';' primero
+      let table = parseCsvToArrays(text, ';');
+      if(table.length <= 1){
+        table = parseCsvToArrays(text, ',');
+      }
+
+      const objs = arraysToObjects(table);
+      return normalizeAndTag(objs, sourceName);
+
+    }catch(e){
+      console.warn("No se pudo cargar", sourceName, "desde", url, e);
+      return [];
+    }
+  }
+
+  // =====================================================
+  // 2. Mapeo de columnas a nuestro esquema común
+  // =====================================================
+
+  function numOrNull(v){
+    if(v===undefined || v===null || v==="") return null;
+    const n = Number(String(v).replace(',','.'));
+    return Number.isNaN(n) ? null : n;
+  }
+
+  function toIsoDate(raw){
+  if(!raw) return null;
+  let s = String(raw).trim();
+
+  if (s.match(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/)) {
+    s = s.split(" ")[0]; // "2020-01-01"
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+  if(m){
+    const Y=m[1], M=m[2], D=m[3];
+    return `${Y}-${M}-${D}`;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+  if(m){
+    const D=m[1], M=m[2], Y=m[3];
+    return `${Y}-${M}-${D}`;
+  }
+
+  // Fallback Date()
+  const d=new Date(s);
+  if(!Number.isNaN(d.getTime())){
+    const yyyy = String(d.getFullYear()).padStart(4,"0");
+    const mm   = String(d.getMonth()+1).padStart(2,"0");
+    const dd   = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+
+  // clima local -> registros estándar
+  function mapClimaRows(normRows){
+  return normRows.map(r=>{
+    // temperatura CSV: fecha; estacion_id; temp_aire
+    const rawFecha = r.fecha || r.fecha_hora || r.fechahora || null;
+    const isoFecha = toIsoDate(rawFecha);
+
+    const regionGuess =
+      r.estacion_id || r.estacion || r.nombre_estacion || null;
+
+    const tempAire = numOrNull(r.temp_aire);
+
+    return {
+      fecha: isoFecha,               // "2020-01-01"
+      region: regionGuess || null,   // "Rocha G3"
+      fruta: null,
+      lluvia_mm: null,               
+      t_min: tempAire,               // we map hourly -> both min/max placeholder
+      t_max: tempAire,
+      produccion_tn: null,
+      precio_kg: null,
+      origen_fuente: "INUMET"
+    };
+  }).filter(r => r.fecha);
+}
+
+function mapLluviaRows(normRows){
+  return normRows.map(r=>{
+    // lluvia CSV: fecha; estacion_id; precip_horario
+    const rawFecha = r.fecha || r.fecha_hora || r.fechahora || null;
+    const isoFecha = toIsoDate(rawFecha);
+
+    const regionGuess =
+      r.estacion_id || r.estacion || r.nombre_estacion || null;
+
+    const precip = numOrNull(r.precip_horario);
+
+    return {
+      fecha: isoFecha,               // "2020-01-01"
+      region: regionGuess || null,   // "Aeropuerto Melilla G3"
+      fruta: null,
+      lluvia_mm: precip,             // mm en esa hora; luego agregaremos por día/quincena/mes
+      t_min: null,                   // no temperatura aquí
+      t_max: null,
+      produccion_tn: null,
+      precio_kg: null,
+      origen_fuente: "INUMET"
+    };
+  }).filter(r => r.fecha);
+}
+
+  function mapIniaRows(normRows){
+    return normRows.map(r=>{
+      const fecha =
+        r.fecha || r.dia || r.periodo || r.fecha_cosecha || r.fechacosecha || null;
+
+      const regionGuess =
+        r.region || r.departamento || r.depto || r.zona ||
+        r.departamento_productor || null;
+
+      const frutaGuess =
+        r.fruta || r.variedad || r.cultivo || r.producto || r.especie || null;
+
+      const produccion_tn = numOrNull(
+        r.produccion_tn || r.produccion || r.toneladas ||
+        r.volumen_tn || r.rendimiento_tn || r.rendimiento || r.volumen
+      );
+
+      const precio_kg = numOrNull(
+        r.precio_kg || r.precio || r.precio_consumidor ||
+        r.preciokg || r.precio_promedio
+      );
+
+      return {
+        fecha: toIsoDate(fecha),
+        region: regionGuess || null,
+        fruta: frutaGuess || null,
+        lluvia_mm: null,
+        t_min: null,
+        t_max: null,
+        produccion_tn,
+        precio_kg,
+        origen_fuente: r.origen_fuente || "Inia"
+      };
+    }).filter(r => r.fecha);
+  }
+
+  // =====================================================
+  // 3. Integración GAV en el navegador
+  // =====================================================
+
+  function mergeSources(integrated){
+  // integrated will now include:
+  //   integrated.climaTemp  (from temperatura CSV)
+  //   integrated.climaRain  (from precipitacion CSV)
+  //   integrated.Inia       (still empty for now)
+
+  const climaTemp = integrated["climaTemp"] || [];
+  const climaRain = integrated["climaRain"] || [];
+  const prod      = integrated["Inia"]      || [];
+
+  // 1. Merge temperatura + lluvia into a single climate map by (fecha, region)
+  const climaMap = new Map();
+  const climaKey = (f,r)=>[f||"",r||""].join("§");
+
+  // seed with temperatura rows
+  for (const row of climaTemp){
+    const k = climaKey(row.fecha, row.region);
+    climaMap.set(k, {
+      fecha: row.fecha,
+      region: row.region || null,
+      fruta: null,
+      lluvia_mm: row.lluvia_mm ?? null,
+      t_min: row.t_min ?? null,
+      t_max: row.t_max ?? null,
+      produccion_tn: null,
+      precio_kg: null,
+      origen_fuente: row.origen_fuente || "INUMET"
+    });
+  }
+
+  // merge in precip rows
+  for (const row of climaRain){
+    const k = climaKey(row.fecha, row.region);
+    if (climaMap.has(k)){
+      const base = climaMap.get(k);
+      if (base.lluvia_mm == null && row.lluvia_mm != null){
+        base.lluvia_mm = row.lluvia_mm;
+        base.origen_fuente = "INUMET";
+      } else {
+        climaMap.set(k + "§rain" + Math.random(), {
+          fecha: row.fecha,
+          region: row.region || null,
+          fruta: null,
+          lluvia_mm: row.lluvia_mm ?? null,
+          t_min: null,
+          t_max: null,
+          produccion_tn: null,
+          precio_kg: null,
+          origen_fuente: "INUMET"
+        });
+      }
+    } else {
+      climaMap.set(k, {
+        fecha: row.fecha,
+        region: row.region || null,
+        fruta: null,
+        lluvia_mm: row.lluvia_mm ?? null,
+        t_min: null,
+        t_max: null,
+        produccion_tn: null,
+        precio_kg: null,
+        origen_fuente: "INUMET"
+      });
+    }
+  }
+
+  const climaCombined = Array.from(climaMap.values());
+
+  const keyFull = (f,r,u)=>[f||"",r||"",u||""].join("§");
+  const joinedMap = new Map();
+
+  // seed with climate
+  for (const row of climaCombined){
+    const k = keyFull(row.fecha, row.region, row.fruta || "");
+    joinedMap.set(k, {
+      fecha: row.fecha,
+      region: row.region || null,
+      fruta: row.fruta || null,
+      lluvia_mm: row.lluvia_mm ?? null,
+      t_min: row.t_min ?? null,
+      t_max: row.t_max ?? null,
+      produccion_tn: null,
+      precio_kg: null,
+      origen_fuente: row.origen_fuente || "INUMET"
+    });
+  }
+
+  // enrich with production/price (still none)
+  for (const row of prod){
+    const k_full       = keyFull(row.fecha, row.region, row.fruta || "");
+    const k_regionOnly = keyFull(row.fecha, row.region, "");
+
+    if (joinedMap.has(k_full)){
+      const base = joinedMap.get(k_full);
+      base.fruta = base.fruta || row.fruta || null;
+      base.produccion_tn = row.produccion_tn ?? base.produccion_tn;
+      base.precio_kg     = row.precio_kg ?? base.precio_kg;
+      base.origen_fuente = base.origen_fuente + " + " + (row.origen_fuente || "INIA");
+    } else if (joinedMap.has(k_regionOnly)){
+      const base = joinedMap.get(k_regionOnly);
+      base.fruta = base.fruta || row.fruta || null;
+      base.produccion_tn = row.produccion_tn ?? base.produccion_tn;
+      base.precio_kg     = row.precio_kg ?? base.precio_kg;
+      base.origen_fuente = base.origen_fuente + " + " + (row.origen_fuente || "INIA");
+    } else {
+      joinedMap.set(k_full, {
+        fecha: row.fecha,
+        region: row.region || null,
+        fruta: row.fruta || null,
+        lluvia_mm: null,
+        t_min: null,
+        t_max: null,
+        produccion_tn: row.produccion_tn ?? null,
+        precio_kg: row.precio_kg ?? null,
+        origen_fuente: row.origen_fuente || "INIA"
+      });
+    }
+  }
+
+  return Array.from(joinedMap.values());
+}
+
+
+  // browserIntegration ahora sólo carga clima local
+  async function browserIntegration(){
+  // 1. temperatura del aire
+  const tempNorm = await fetchCsvAndNormalize(
+    URL_TEMPERATURA_LOCAL,
+    "INUMET"
+  );
+  const tempRows = mapClimaRows(tempNorm); // fills t_min/t_max
+
+  // 2. precipitación horaria
+  const rainNorm = await fetchCsvAndNormalize(
+    URL_LLUVIA_LOCAL,
+    "INUMET"
+  );
+  const rainRows = mapLluviaRows(rainNorm); // fills lluvia_mm
+
+  // 3. producción / precios (todavía no hay archivo)
+  const prodRows = []; // future: mapIniaRows(...)
+
+  // 4. fusionar ambas fuentes de clima + prodRows
+  return mergeSources({
+    "climaTemp": tempRows,
+    "climaRain": rainRows,
+    "Inia": prodRows
+  });
+}
+
+
+  // =====================================================
+  // 4. Estado UI, helpers, render
+  // =====================================================
+
+  let combinedRows = [];
+
+  const state = {
+    fruit:null,
+    region:null,
+    startDate:null,
+    endDate:null,
+    agg:"month",
+    filteredData:[]
+  };
+
+  const fruitSelect       = document.getElementById("fruitSelect");
+  const regionSelect      = document.getElementById("regionSelect");
+  const startDateInput    = document.getElementById("startDate");
+  const endDateInput      = document.getElementById("endDate");
+  const aggSelect         = document.getElementById("aggSelect");
+  const applyFiltersBtn   = document.getElementById("applyFiltersBtn");
+  const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
+  const refreshDataBtn    = document.getElementById("refreshDataBtn");
+  const exportCsvBtn      = document.getElementById("exportCsvBtn");
+
+  const kpiTempMax        = document.getElementById("kpiTempMax");
+  const kpiTempMeta       = document.getElementById("kpiTempMeta");
+  const kpiProduction     = document.getElementById("kpiProduction");
+  const kpiProdMeta       = document.getElementById("kpiProdMeta");
+  const kpiPrice          = document.getElementById("kpiPrice");
+  const kpiPriceMeta      = document.getElementById("kpiPriceMeta");
+
+  const dataTableBody     = document.getElementById("dataTableBody");
+
+  const tempCtx  = document.getElementById("tempChart").getContext("2d");
+  const prodCtx  = document.getElementById("prodChart").getContext("2d");
+  const priceCtx = document.getElementById("priceChart").getContext("2d");
+
+  function toDate(s){
+    const [y,m,d] = s.split("-").map(Number);
+    return new Date(y,m-1,d);
+  }
+  
+  function formatDateEs(s){
+  // 1) Quincena: "YYYY-MM-Q1" / "YYYY-MM-Q2"
+  let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+  if (m){
+    const yy = m[1];
+    const mm = m[2];
+    const q  = m[3]; // "1" or "2"
+    // Show as "Q1 01/2020"
+    return `Q${q} ${mm}/${yy}`;
+  }
+
+  // 2) Mes: "YYYY-MM"
+  m = s.match(/^(\d{4})-(\d{2})$/);
+  if (m){
+    const yy = m[1];
+    const mm = m[2];
+    // Show as "01/2020"
+    return `${mm}/${yy}`;
+  }
+
+  // 3) Día: "YYYY-MM-DD"
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m){
+    const yy = m[1];
+    const mm = m[2];
+    const dd = m[3];
+    return `${dd}/${mm}/${yy}`;
+  }
+
+  // fallback: just return the raw string
+  return s;
+}
+
+function formatDateShortEs(s){
+
+  // Quincena: "YYYY-MM-Q1"
+  let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+  if (m){
+    const yy = m[1];
+    const mm = m[2];
+    const q  = m[3];
+    // Short label like "Q1/01"
+    return `Q${q}/${mm}`;
+  }
+
+  // Mes: "YYYY-MM"
+  m = s.match(/^(\d{4})-((\d{2}))$/);
+  if (m){
+    const yy = m[1];
+    const mm = m[2];
+    // Short label like "01/20" (last 2 digits of year)
+    const yy2 = yy.slice(-2);
+    return `${mm}/${yy2}`;
+  }
+
+  // Día: "YYYY-MM-DD"
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m){
+    const mm = m[2];
+    const dd = m[3];
+    return `${dd}/${mm}`;
+  }
+
+  // fallback
+  return s;
+}
+
+
+  function fmt1(n){
+    return (n==null||Number.isNaN(n)) ? "--" : Number(n).toFixed(1);
+  }
+  function avg(arr){
+    if(!arr.length) return null;
+    return arr.reduce((a,b)=>a+b,0)/arr.length;
+  }
+  function sum(arr){
+    if(!arr.length) return null;
+    return arr.reduce((a,b)=>a+b,0);
+  }
+
+  function ymdParts(fechaStr) {
+  const [yy,mm,dd] = fechaStr.split("-").map(x=>parseInt(x,10));
+  return {yy,mm,dd};
+}
+
+function quincenaFromDay(dayNumber){
+  return (dayNumber <= 15) ? 1 : 2;
+}
+
+function aggReducerInit() {
+  return {
+    count: 0,
+    lluvia_mm_sum: 0,
+    t_min_list: [],
+    t_max_list: [],
+    prod_sum: 0,
+    price_list: [],
+    origenes: new Set(),
+    sampleFecha: null, // for label
+    sampleRegion: null,
+    sampleFruta: null
+  };
+}
+
+function aggReducerAcc(acc, row){
+  acc.count += 1;
+
+  if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
+    acc.lluvia_mm_sum += Number(row.lluvia_mm);
+  }
+  if (row.t_min != null && !Number.isNaN(row.t_min)) {
+    acc.t_min_list.push(Number(row.t_min));
+  }
+  if (row.t_max != null && !Number.isNaN(row.t_max)) {
+    acc.t_max_list.push(Number(row.t_max));
+  }
+  if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
+    acc.prod_sum += Number(row.produccion_tn);
+  }
+  if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
+    acc.price_list.push(Number(row.precio_kg));
+  }
+
+  if (row.origen_fuente) {
+    acc.origenes.add(row.origen_fuente);
+  }
+
+  if (!acc.sampleFecha)  acc.sampleFecha  = row.fecha;
+  if (!acc.sampleRegion) acc.sampleRegion = row.region ?? null;
+  if (!acc.sampleFruta)  acc.sampleFruta  = row.fruta ?? null;
+
+  return acc;
+}
+
+function finalizeAggRecord(bucketKey, acc, bucketMeta){
+  const lluvia_mm = acc.lluvia_mm_sum || null;
+
+  const t_min = acc.t_min_list.length
+    ? Math.min(...acc.t_min_list)
+    : null;
+
+  const t_max = acc.t_max_list.length
+    ? Math.max(...acc.t_max_list)
+    : null;
+
+  const produccion_tn = acc.prod_sum || null;
+
+  const precio_kg = acc.price_list.length
+    ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
+    : null;
+
+  const origen_fuente = Array.from(acc.origenes).join(" + ");
+
+  let fechaOut = acc.sampleFecha;
+  if (bucketMeta.type === "fortnight") {
+    const {yy,mm} = bucketMeta;
+    const q = bucketMeta.quincena;
+    const mmStr = String(mm).padStart(2,"0");
+    fechaOut = `${yy}-${mmStr}-Q${q}`;
+  }
+  if (bucketMeta.type === "month") {
+    const {yy,mm} = bucketMeta;
+    const mmStr = String(mm).padStart(2,"0");
+    fechaOut = `${yy}-${mmStr}`;
+  }
+
+  return {
+    fecha: fechaOut,
+    region: acc.sampleRegion,
+    fruta: acc.sampleFruta,
+    lluvia_mm,
+    t_min,
+    t_max,
+    produccion_tn,
+    precio_kg,
+    origen_fuente
+  };
+}
+
+
+  function aggregateData(data){
+  const mode = state.agg; // "day" | "fortnight" | "month"
+
+  if (!data.length) return [];
+
+
+  const buckets = new Map();
+
+  for (const row of data){
+    if (!row.fecha) continue;
+
+    const {yy,mm,dd} = ymdParts(row.fecha);
+
+    let bucketKey;
+    let meta;
+    if (mode === "day"){
+      // group by (yyyy-mm-dd, region, fruta)
+      bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
+      meta = {type:"day", yy, mm, dd};
+    } else if (mode === "fortnight"){
+      const quin = quincenaFromDay(dd);
+      // group by (yyyy-mm, quincena, region, fruta)
+      bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
+      meta = {type:"fortnight", yy, mm, quincena: quin};
+    } else {
+      // default "month"
+      // group by (yyyy-mm, region, fruta)
+      bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
+      meta = {type:"month", yy, mm};
+    }
+
+    if (!buckets.has(bucketKey)){
+      buckets.set(bucketKey, {
+        acc: aggReducerInit(),
+        meta
+      });
+    }
+
+    const bucket = buckets.get(bucketKey);
+    aggReducerAcc(bucket.acc, row);
+  }
+
+  const out = [];
+  for (const {acc, meta} of buckets.values()){
+    out.push(finalizeAggRecord(null, acc, meta));
+  }
+
+  out.sort((a,b)=>{
+    function parseKey(f){
+      const qm = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+      if (qm){
+        return {
+          yy:parseInt(qm[1],10),
+          mm:parseInt(qm[2],10),
+          dd:0,
+          q:parseInt(qm[3],10)
+        };
+      }
+      const dm = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (dm){
+        return {
+          yy:parseInt(dm[1],10),
+          mm:parseInt(dm[2],10),
+          dd:parseInt(dm[3],10),
+          q:0
+        };
+      }
+      const mmOnly = f.match(/^(\d{4})-(\d{2})$/);
+      if (mmOnly){
+        return {
+          yy:parseInt(mmOnly[1],10),
+          mm:parseInt(mmOnly[2],10),
+          dd:0,
+          q:0
+        };
+      }
+      return {yy:0,mm:0,dd:0,q:0};
+    }
+    const ak = parseKey(a.fecha);
+    const bk = parseKey(b.fecha);
+
+    if (ak.yy !== bk.yy) return ak.yy - bk.yy;
+    if (ak.mm !== bk.mm) return ak.mm - bk.mm;
+    if (ak.q  !== bk.q ) return ak.q  - bk.q;
+    if (ak.dd !== bk.dd) return ak.dd - bk.dd;
+    return 0;
+  });
+
+  return out;
+}
+
+
+  function applyFilters(){
+    const fFruit = state.fruit;
+    const fRegion = state.region;
+    const fStart = state.startDate ? toDate(state.startDate) : null;
+    const fEnd   = state.endDate ? toDate(state.endDate)   : null;
+
+    let out = combinedRows.filter(r=>{
+      if (fFruit && r.fruta !== fFruit) return false;
+      if (fRegion && r.region !== fRegion) return false;
+      const d = toDate(r.fecha);
+      if (fStart && d < fStart) return false;
+      if (fEnd && d > fEnd) return false;
+      return true;
+    });
+
+    state.filteredData = aggregateData(out);
+  }
+
+  const aggLabelEs = { day:"Día", fortnight:"Quincena", month:"Mes" };
+
+  function renderKPIs(){
+    const d = state.filteredData;
+    if (!d.length){
+      kpiTempMax.textContent = "--"; kpiTempMeta.textContent = "Sin datos en rango";
+      kpiProduction.textContent = "--"; kpiProdMeta.textContent = "Sin datos en rango";
+      kpiPrice.textContent = "--"; kpiPriceMeta.textContent = "Sin datos en rango";
+      return;
+    }
+
+    const avgTmax   = avg(d.filter(r=>r.t_max!=null).map(r=>r.t_max));
+    const totalProd = sum(d.filter(r=>r.produccion_tn!=null).map(r=>r.produccion_tn));
+    const avgPrice  = avg(d.filter(r=>r.precio_kg!=null).map(r=>r.precio_kg));
+
+    const aggTxt = aggLabelEs[state.agg] || "";
+
+    kpiTempMax.textContent   = fmt1(avgTmax);
+    kpiTempMeta.textContent  = `Promedio ${aggTxt}`;
+
+    kpiProduction.textContent = (totalProd ?? "--");
+    kpiProdMeta.textContent   = `Suma ${aggTxt}`;
+
+    kpiPrice.textContent     = fmt1(avgPrice);
+    kpiPriceMeta.textContent = `Promedio ${aggTxt}`;
+  }
+
+  function renderTable(){
+    dataTableBody.innerHTML = "";
+
+    if (!state.filteredData.length){
+      const tr=document.createElement("tr");
+      const td=document.createElement("td");
+      td.colSpan=9;
+      td.textContent="Sin datos para los filtros seleccionados.";
+      tr.appendChild(td);
+      dataTableBody.appendChild(tr);
+      return;
+    }
+
+    state.filteredData.forEach(row=>{
+      const tr=document.createElement("tr");
+      const cells=[
+        formatDateEs(row.fecha),
+        row.region ?? "",
+        row.fruta ?? "",
+        row.lluvia_mm ?? "",
+        row.t_min ?? "",
+        row.t_max ?? "",
+        row.produccion_tn ?? "",
+        row.precio_kg ?? "",
+        row.origen_fuente ?? ""
+      ];
+      cells.forEach(v=>{
+        const td=document.createElement("td");
+        td.textContent=v;
+        tr.appendChild(td);
+      });
+      dataTableBody.appendChild(tr);
+    });
+  }
+
+  function drawLineChart(ctx,data,xKey,yKey){
+    const w=ctx.canvas.width,h=ctx.canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const bg="#1e2538",axis="rgba(255,255,255,0.3)",line="#38bdf8",text="rgba(255,255,255,0.7)",grid="rgba(255,255,255,0.07)";
+    ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+
+    if(!data.length){
+      ctx.fillStyle=text;
+      ctx.font="14px system-ui,sans-serif";
+      ctx.fillText("Sin datos",10,20);
+      return;
+    }
+
+    const mLeft=50,mRight=20,mTop=20,mBottom=30;
+    const plotW=w-mLeft-mRight,plotH=h-mTop-mBottom;
+
+    const xVals=data.map(d=>d[xKey]);
+    const yVals=data.map(d=>Number(d[yKey])).filter(v=>!Number.isNaN(v));
+
+    if (!yVals.length){
+      ctx.fillStyle=text;
+      ctx.font="14px system-ui,sans-serif";
+      ctx.fillText("Sin datos",10,20);
+      return;
+    }
+
+    const yMin=Math.min(...yVals), yMax=Math.max(...yVals);
+    const yRange=(yMax-yMin)||1;
+    const niceMin=yMin-yRange*0.1;
+    const niceMax=yMax+yRange*0.1;
+
+    const xScale=i=>xVals.length===1? mLeft+plotW/2 : mLeft+(i/(xVals.length-1))*plotW;
+    const yScale=v=>{
+      const t=(v-niceMin)/(niceMax-niceMin);
+      return mTop+(1-t)*plotH;
+    };
+
+    ctx.strokeStyle=grid;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let g=0;g<=4;g++){
+      const yy=mTop+(g/4)*plotH;
+      ctx.moveTo(mLeft,yy);
+      ctx.lineTo(mLeft+plotW,yy);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle=axis;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(mLeft,mTop);
+    ctx.lineTo(mLeft,mTop+plotH);
+    ctx.moveTo(mLeft,mTop+plotH);
+    ctx.lineTo(mLeft+plotW,mTop+plotH);
+    ctx.stroke();
+
+    ctx.fillStyle=text;
+    ctx.font="12px system-ui,sans-serif";
+    ctx.textAlign="right";
+    ctx.textBaseline="middle";
+    for(let g=0;g<=4;g++){
+      const val=niceMax-(g/4)*(niceMax-niceMin);
+      const yy=mTop+(g/4)*plotH;
+      ctx.fillText(val.toFixed(1),mLeft-6,yy);
+    }
+
+    ctx.textAlign="center";
+    ctx.textBaseline="top";
+    xVals.forEach((xv,i)=>{
+      const xx=xScale(i);
+      ctx.fillText(formatDateShortEs(xv),xx,mTop+plotH+6);
+    });
+
+    ctx.strokeStyle=line;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    data.forEach((row,i)=>{
+      const xx=xScale(i);
+      const yy=yScale(Number(row[yKey]));
+      if (i===0) ctx.moveTo(xx,yy);
+      else ctx.lineTo(xx,yy);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle=line;
+    data.forEach((row,i)=>{
+      const xx=xScale(i);
+      const yy=yScale(Number(row[yKey]));
+      ctx.beginPath();
+      ctx.arc(xx,yy,3,0,Math.PI*2);
+      ctx.fill();
+    });
+  }
+
+  function renderCharts(){
+    drawLineChart(
+      tempCtx,
+      state.filteredData.filter(r=>r.t_max!=null),
+      "fecha",
+      "t_max"
+    );
+
+    drawLineChart(
+      prodCtx,
+      state.filteredData.filter(r=>r.produccion_tn!=null),
+      "fecha",
+      "produccion_tn"
+    );
+
+    drawLineChart(
+      priceCtx,
+      state.filteredData.filter(r=>r.precio_kg!=null),
+      "fecha",
+      "precio_kg"
+    );
+  }
+
+  function renderAll(){
+    applyFilters();
+    renderKPIs();
+    renderTable();
+    renderCharts();
+  }
+
+  function initFilterControlsFromData(){
+    const fruits=[...new Set(combinedRows.map(r=>r.fruta).filter(Boolean))].sort();
+    fruitSelect.innerHTML =
+      '<option value="">(todas)</option>' +
+      fruits.map(f=>`<option value="${f}">${f}</option>`).join("");
+
+    const regions=[...new Set(combinedRows.map(r=>r.region).filter(Boolean))].sort();
+    regionSelect.innerHTML =
+      '<option value="">(todas)</option>' +
+      regions.map(z=>`<option value="${z}">${z}</option>`).join("");
+
+    const dates = combinedRows.map(r=>r.fecha).sort();
+    const minDate = dates[0];
+    const maxDate = dates[dates.length-1];
+    startDateInput.value = minDate || "";
+    endDateInput.value   = maxDate || "";
+
+    state.fruit     = "";
+    state.region    = "";
+    state.startDate = minDate || "";
+    state.endDate   = maxDate || "";
+    state.agg       = aggSelect.value;
+  }
+
+  function exportToCsv(rows){
+    if(!rows.length){
+      alert("No hay datos para exportar.");
+      return;
+    }
+    const headers=[
+      "fecha","region","fruta",
+      "lluvia_mm","t_min","t_max",
+      "produccion_tn","precio_kg",
+      "origen_fuente"
+    ];
+    const csv=[
+      headers.join(","),
+      ...rows.map(r=>headers.map(h=>r[h]??"").join(","))
+    ].join("\n");
+
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="export_mgap.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  applyFiltersBtn.addEventListener("click", ()=>{
+    state.fruit     = fruitSelect.value;
+    state.region    = regionSelect.value;
+    state.startDate = startDateInput.value;
+    state.endDate   = endDateInput.value;
+    state.agg       = aggSelect.value;
+    renderAll();
+  });
+
+  resetFiltersBtn.addEventListener("click", ()=>{
+    initFilterControlsFromData();
+    renderAll();
+  });
+
+  exportCsvBtn.addEventListener("click", ()=>{
+    exportToCsv(state.filteredData);
+  });
+
+  refreshDataBtn.addEventListener("click", async ()=>{
+    // Load fresh local CSV again.
+    combinedRows = await browserIntegration();
+    initFilterControlsFromData();
+    renderAll();
+  });
+
+  // boot
+  (async function boot(){
+    combinedRows = await browserIntegration();
+    initFilterControlsFromData();
+    renderAll();
+  })();
+</script>
+
+</body>
+</html>
