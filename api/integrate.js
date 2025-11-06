@@ -1,7 +1,7 @@
-// file: api/integrate.js
-import { parse } from 'csv-parse/sync';
+// api/integrate.js
 
-// URLs reales (usa las de tu script original)
+const { parse } = require('csv-parse/sync');
+
 const DATA_SOURCES = {
   Temperatura_Observaciones:
     "https://catalogodatos.gub.uy/dataset/accd0e24-76be-4101-904b-81bb7d41ee88/resource/f800fc53-556b-4d1c-8bd6-28b41f9cf146/download/inumet_temperatura_del_aire.csv",
@@ -22,14 +22,16 @@ async function loadAndNormalizeSource(sourceName, url) {
 
   const response = await fetch(url);
   if (!response.ok) {
-    console.warn(`Warning: HTTP status ${response.status} for source ${sourceName}`);
+    console.warn(
+      `HTTP ${response.status} loading ${sourceName} (${url})`
+    );
     return [];
   }
 
   const text = await response.text();
 
   if (/<html/i.test(text)) {
-    console.warn(`Server returned HTML rather than CSV for ${sourceName}`);
+    console.warn(`HTML received instead of CSV for ${sourceName}`);
     return [];
   }
 
@@ -43,7 +45,7 @@ async function loadAndNormalizeSource(sourceName, url) {
     if (records.length && Object.keys(records[0]).length === 1) {
       throw new Error("Only one column with ';' → retry with ','");
     }
-  } catch (err) {
+  } catch {
     records = parse(text, {
       delimiter: ",",
       columns: true,
@@ -73,7 +75,9 @@ async function scrapeStationLocations(sourceName, url) {
 
   const response = await fetch(url);
   if (!response.ok) {
-    console.warn(`Warning: HTTP status ${response.status} for scraping source ${sourceName}`);
+    console.warn(
+      `HTTP ${response.status} scraping ${sourceName} (${url})`
+    );
     return [];
   }
 
@@ -115,18 +119,17 @@ async function scrapeStationLocations(sourceName, url) {
   return arr;
 }
 
-// Vercel serverless function: /api/integrate
-export default async function handler(req, res) {
-  // Opcional: limitar solo a GET
+// Node-style Vercel function: /api/integrate
+module.exports = async (req, res) => {
   if (req.method && req.method !== "GET") {
     res.statusCode = 405;
     res.setHeader("Allow", "GET");
     return res.end("Method Not Allowed");
   }
 
-  try {
-    const integrated = {};
+  const integrated = {};
 
+  try {
     for (const [sourceName, url] of Object.entries(DATA_SOURCES)) {
       let dataRows = [];
       if (sourceName.includes("Scraping")) {
@@ -141,12 +144,12 @@ export default async function handler(req, res) {
         console.warn(`Source empty or error: ${sourceName}`);
       }
 
+      // simple throttling to be amable with data providers
       await delay(1000);
     }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    // por si llamas desde otro origen en desarrollo
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.end(JSON.stringify(integrated));
   } catch (err) {
@@ -154,6 +157,7 @@ export default async function handler(req, res) {
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
     res.end(
       JSON.stringify({
         error: "Error al integrar fuentes",
@@ -161,4 +165,4 @@ export default async function handler(req, res) {
       })
     );
   }
-}
+};
