@@ -330,9 +330,42 @@
       margin-top:var(--space-xl);
       text-align:center
     }
+
+    .loading-overlay{
+      position:fixed;
+      inset:0;
+      background:rgba(15,23,42,.92);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:0.75rem;
+      color:var(--text-dim);
+      font-size:var(--fs-500);
+      z-index:9999;
+      backdrop-filter:blur(6px);
+    }
+    .loading-spinner{
+      width:32px;
+      height:32px;
+      border-radius:999px;
+      border:3px solid rgba(148,163,253,.25);
+      border-top-color:var(--accent);
+      animation:spin .8s linear infinite;
+    }
+    @keyframes spin{
+      to{transform:rotate(360deg)}
+    }
+    .hidden{display:none}
+
   </style>
 </head>
-<body>
+  <body>
+    <div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-spinner"></div>
+    <div id="loadingText">Cargando datos integrados desde las fuentes...</div>
+  </div>
+
   <header class="app-header">
     <div class="app-header__titles">
       <h1>Integración de datos frutícolas</h1>
@@ -491,15 +524,9 @@
   </footer>
 
 <script>
-  // =====================================================
-  // Config: Vercel backend
-  // =====================================================
-
   const API_URL = "/api/integrate";
 
-  // =====================================================
-  // Helpers: numeric, dates, etc.
-  // =====================================================
+  // ================= Helpers: numeric, dates =================
 
   function numOrNull(v){
     if(v === undefined || v === null || v === "") return null;
@@ -516,16 +543,10 @@
     }
 
     let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
-    if (m) {
-      const Y = m[1], M = m[2], D = m[3];
-      return `${Y}-${M}-${D}`;
-    }
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
     m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-    if (m) {
-      const D = m[1], M = m[2], Y = m[3];
-      return `${Y}-${M}-${D}`;
-    }
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
 
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())){
@@ -539,53 +560,26 @@
 
   function formatDateEs(s){
     let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-    if (m){
-      const yy = m[1];
-      const mm = m[2];
-      const q  = m[3];
-      return `Q${q} ${mm}/${yy}`;
-    }
+    if (m) return `Q${m[3]} ${m[2]}/${m[1]}`;
 
     m = s.match(/^(\d{4})-(\d{2})$/);
-    if (m){
-      const yy = m[1];
-      const mm = m[2];
-      return `${mm}/${yy}`;
-    }
+    if (m) return `${m[2]}/${m[1]}`;
 
     m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m){
-      const yy = m[1];
-      const mm = m[2];
-      const dd = m[3];
-      return `${dd}/${mm}/${yy}`;
-    }
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
     return s;
   }
 
   function formatDateShortEs(s){
     let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-    if (m){
-      const mm = m[2];
-      const q  = m[3];
-      return `Q${q}/${mm}`;
-    }
+    if (m) return `Q${m[3]}/${m[2]}`;
 
     m = s.match(/^(\d{4})-(\d{2})$/);
-    if (m){
-      const yy = m[1];
-      const mm = m[2];
-      const yy2 = yy.slice(-2);
-      return `${mm}/${yy2}`;
-    }
+    if (m) return `${m[2]}/${m[1].slice(-2)}`;
 
     m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m){
-      const mm = m[2];
-      const dd = m[3];
-      return `${dd}/${mm}`;
-    }
+    if (m) return `${m[3]}/${m[2]}`;
 
     return s;
   }
@@ -602,9 +596,7 @@
     return arr.reduce((a,b)=>a+b,0);
   }
 
-  // =====================================================
-  // Aggregation helpers
-  // =====================================================
+  // ================= Aggregation helpers =================
 
   function ymdParts(fechaStr) {
     const [yy,mm,dd] = fechaStr.split("-").map(x=>parseInt(x,10));
@@ -673,12 +665,10 @@
     let fechaOut = acc.sampleFecha;
     if (meta.type === "fortnight") {
       const {yy,mm,quincena} = meta;
-      const mmStr = String(mm).padStart(2,"0");
-      fechaOut = `${yy}-${mmStr}-Q${quincena}`;
+      fechaOut = `${yy}-${String(mm).padStart(2,"0")}-Q${quincena}`;
     } else if (meta.type === "month") {
       const {yy,mm} = meta;
-      const mmStr = String(mm).padStart(2,"0");
-      fechaOut = `${yy}-${mmStr}`;
+      fechaOut = `${yy}-${String(mm).padStart(2,"0")}`;
     }
 
     return {
@@ -696,7 +686,6 @@
 
   function aggregateData(data){
     const mode = state.agg;
-
     if (!data.length) return [];
 
     const buckets = new Map();
@@ -734,17 +723,11 @@
     out.sort((a,b)=>{
       function parseKey(f){
         let m = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-        if (m){
-          return {yy:+m[1], mm:+m[2], dd:0, q:+m[3]};
-        }
+        if (m) return {yy:+m[1], mm:+m[2], dd:0, q:+m[3]};
         m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (m){
-          return {yy:+m[1], mm:+m[2], dd:+m[3], q:0};
-        }
+        if (m) return {yy:+m[1], mm:+m[2], dd:+m[3], q:0};
         m = f.match(/^(\d{4})-(\d{2})$/);
-        if (m){
-          return {yy:+m[1], mm:+m[2], dd:0, q:0};
-        }
+        if (m) return {yy:+m[1], mm:+m[2], dd:0, q:0};
         return {yy:0,mm:0,dd:0,q:0};
       }
       const ak = parseKey(a.fecha);
@@ -759,9 +742,7 @@
     return out;
   }
 
-  // =====================================================
-  // Global state and DOM refs
-  // =====================================================
+  // ================= State & DOM refs =================
 
   let combinedRows = [];
 
@@ -797,9 +778,27 @@
   const prodCtx  = document.getElementById("prodChart").getContext("2d");
   const priceCtx = document.getElementById("priceChart").getContext("2d");
 
-  // =====================================================
-  // Backend integration (Vercel /api/integrate)
-  // =====================================================
+  const loadingOverlay = document.getElementById("loadingOverlay");
+  const loadingTextEl  = document.getElementById("loadingText");
+
+  // ================= Loading UI =================
+
+  function setLoading(isLoading, message){
+    if (message) loadingTextEl.textContent = message;
+    const method = isLoading ? "add" : "remove";
+    if (isLoading){
+      loadingOverlay.classList.remove("hidden");
+    } else {
+      loadingOverlay.classList.add("hidden");
+    }
+
+    [refreshDataBtn, applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
+      if(!btn) return;
+      btn.disabled = !!isLoading;
+    });
+  }
+
+  // ================= Backend integration =================
 
   async function fetchBackendTable(){
     const resp = await fetch(API_URL, { cache: "no-store" });
@@ -817,13 +816,12 @@
     } else if (Array.isArray(json.rows)) {
       rawRows = json.rows;
     } else if (json && typeof json === "object") {
-      // Compatibilidad con api/integrate.js que devuelve { Fuente: [..], ... }
       for (const [sourceName, records] of Object.entries(json)) {
         if (!Array.isArray(records)) continue;
         for (const r of records) {
           rawRows.push({
             ...r,
-            origen_fuente: r.origen_fuente || sourceName
+            origen_fuente: r.origen_fuente || r.origin_source || sourceName
           });
         }
       }
@@ -849,14 +847,27 @@
       .filter(row => row.fecha);
   }
 
-  async function browserIntegration(){
-    const rows = await fetchBackendTable();
-    return rows;
+  async function loadData(){
+    try{
+      setLoading(true, "Cargando datos integrados desde las fuentes...");
+      combinedRows = await fetchBackendTable();
+      initFilterControlsFromData();
+      renderAll();
+    }catch(e){
+      console.error(e);
+      dataTableBody.innerHTML = "";
+      const tr=document.createElement("tr");
+      const td=document.createElement("td");
+      td.colSpan=9;
+      td.textContent="Error al cargar datos desde el backend.";
+      tr.appendChild(td);
+      dataTableBody.appendChild(tr);
+    }finally{
+      setLoading(false);
+    }
   }
 
-  // =====================================================
-  // Filtering, KPIs, table, charts
-  // =====================================================
+  // ================= Rendering =================
 
   function toDateStrict(s){
     const [y,m,d] = s.split("-").map(Number);
@@ -895,7 +906,6 @@
     const avgTmax   = avg(d.filter(r=>r.t_max!=null).map(r=>r.t_max));
     const totalProd = sum(d.filter(r=>r.produccion_tn!=null).map(r=>r.produccion_tn));
     const avgPrice  = avg(d.filter(r=>r.precio_kg!=null).map(r=>r.precio_kg));
-
     const aggTxt = aggLabelEs[state.agg] || "";
 
     kpiTempMax.textContent   = fmt1(avgTmax);
@@ -964,7 +974,6 @@
 
     const xVals=data.map(d=>d[xKey]);
     const yVals=data.map(d=>Number(d[yKey])).filter(v=>!Number.isNaN(v));
-
     if (!yVals.length){
       ctx.fillStyle=text;
       ctx.font="14px system-ui,sans-serif";
@@ -1047,14 +1056,12 @@
       "fecha",
       "t_max"
     );
-
     drawLineChart(
       prodCtx,
       state.filteredData.filter(r=>r.produccion_tn!=null),
       "fecha",
       "produccion_tn"
     );
-
     drawLineChart(
       priceCtx,
       state.filteredData.filter(r=>r.precio_kg!=null),
@@ -1094,36 +1101,7 @@
     state.agg       = aggSelect.value;
   }
 
-  function exportToCsv(rows){
-    if(!rows.length){
-      alert("No hay datos para exportar.");
-      return;
-    }
-    const headers=[
-      "fecha","region","fruta",
-      "lluvia_mm","t_min","t_max",
-      "produccion_tn","precio_kg",
-      "origen_fuente"
-    ];
-    const csv=[
-      headers.join(","),
-      ...rows.map(r=>headers.map(h=>r[h]??"").join(","))
-    ].join("\n");
-
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download="export_mgap.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  // =====================================================
-  // Events
-  // =====================================================
+  // ================= Events =================
 
   applyFiltersBtn.addEventListener("click", ()=>{
     state.fruit     = fruitSelect.value;
@@ -1140,36 +1118,43 @@
   });
 
   exportCsvBtn.addEventListener("click", ()=>{
-    exportToCsv(state.filteredData);
+    if(!state.filteredData.length){
+      alert("No hay datos para exportar.");
+      return;
+    }
+    const headers=[
+      "fecha","region","fruta",
+      "lluvia_mm","t_min","t_max",
+      "produccion_tn","precio_kg",
+      "origen_fuente"
+    ];
+    const csv=[
+      headers.join(","),
+      ...state.filteredData.map(r=>headers.map(h=>r[h]??"").join(","))
+    ].join("\n");
+
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download="export_mgap.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   });
 
   refreshDataBtn.addEventListener("click", async ()=>{
-    combinedRows = await browserIntegration();
-    initFilterControlsFromData();
-    renderAll();
+    await loadData();
   });
 
-  // =====================================================
-  // Boot
-  // =====================================================
+  // ================= Boot =================
 
   (async function boot(){
-    try{
-      combinedRows = await browserIntegration();
-      initFilterControlsFromData();
-      renderAll();
-    }catch(e){
-      console.error(e);
-      dataTableBody.innerHTML = "";
-      const tr=document.createElement("tr");
-      const td=document.createElement("td");
-      td.colSpan=9;
-      td.textContent="Error al cargar datos desde el backend.";
-      tr.appendChild(td);
-      dataTableBody.appendChild(tr);
-    }
+    await loadData();
   })();
 </script>
+
 
 </body>
 </html>
