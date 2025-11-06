@@ -419,9 +419,8 @@
       <section class="meta-block">
         <h2 class="filter-block__title">Notas metodológicas</h2>
         <ul class="meta-list">
-          <li>Los datos se consultan a través de una función serverless en Vercel (<code>/api/integrate</code>) que descarga y normaliza las fuentes públicas.</li>
-          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve datos integrados bajo demanda.</li>
-          <li>Si alguna fuente falla, cambia estructura o presenta problemas de acceso, esa parte no aparecerá en el tablero hasta que la fuente sea compatible.</li>
+          <li>Los datos se consultan a través de una función serverless que descarga y normaliza las fuentes públicas.</li>
+          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos datos integrados bajo demanda.</li>          
         </ul>
       </section>
     </aside>
@@ -512,7 +511,6 @@
         <ul class="prov-list" id="provenanceList">
           <li>Clima: INUMET (temperatura, precipitación).</li>
           <li>Producción / Rendimientos / Precios consumidor: INIA / INE / MEF (datasets públicos).</li>
-          <li>No se almacena información de forma persistente; la función serverless integra y devuelve datos frescos en cada consulta.</li>
         </ul>
       </section>
     </main>
