@@ -1,24 +1,31 @@
-// file: netlify/functions/integrate.js (for example)
-import fetch from 'node-fetch';
-import { parse } from 'csv-parse/sync';   // synchronous parse for simplicity
+// file: api/integrate.js
+import { parse } from 'csv-parse/sync';
 
+// URLs reales (usa las de tu script original)
 const DATA_SOURCES = {
-  Temperatura_Observaciones: "https://…/inumet_temperatura_del_aire.csv",
-  Humedad_Observaciones: "https://…/inumet_humedad_relativa.csv",
-  Precipitacion_Acumulada: "https://…/inumet_precipitacion_acumulada_horaria.csv",
-  Produccion_Manzanas: "https://docs.google.com/spreadsheets/…/export?format=csv",
-  Ubicacion_Estaciones_Scraping: "https://www.inumet.gub.uy/tiempo/estaciones-meteorologicas-automaticas"
+  Temperatura_Observaciones:
+    "https://catalogodatos.gub.uy/dataset/accd0e24-76be-4101-904b-81bb7d41ee88/resource/f800fc53-556b-4d1c-8bd6-28b41f9cf146/download/inumet_temperatura_del_aire.csv",
+  Humedad_Observaciones:
+    "https://catalogodatos.gub.uy/dataset/5f4f50ac-2d11-4863-8ef2-b500d5f3aa90/resource/97ee0df8-3407-433f-b9f7-6e5a2d95ad25/download/inumet_humedad_relativa.csv",
+  Precipitacion_Acumulada:
+    "https://catalogodatos.gub.uy/dataset/fd896b11-4c04-4807-bae4-5373d65beea2/resource/ca987721-6052-4bb8-8596-2a5ad9630639/download/inumet_precipitacion_acumulada_horaria.csv",
+  Produccion_Manzanas:
+    "https://docs.google.com/spreadsheets/d/1AzJs_mNWoFXHN81HO0iT2u-WoZmoMz1K/export?format=csv",
+  Ubicacion_Estaciones_Scraping:
+    "https://www.inumet.gub.uy/tiempo/estaciones-meteorologicas-automaticas"
 };
 
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-const loadAndNormalizeSource = async (sourceName, url) => {
+async function loadAndNormalizeSource(sourceName, url) {
   console.log(`Loading source: ${sourceName} from ${url}`);
-  const response = await fetch(url, { timeout: 60000 });
+
+  const response = await fetch(url);
   if (!response.ok) {
     console.warn(`Warning: HTTP status ${response.status} for source ${sourceName}`);
     return [];
   }
+
   const text = await response.text();
 
   if (/<html/i.test(text)) {
@@ -26,96 +33,132 @@ const loadAndNormalizeSource = async (sourceName, url) => {
     return [];
   }
 
-  // Try parsing with semicolon, then comma
   let records;
   try {
-    records = parse(text, { delimiter: ';', columns: true, skip_empty_lines: true });
+    records = parse(text, {
+      delimiter: ";",
+      columns: true,
+      skip_empty_lines: true
+    });
     if (records.length && Object.keys(records[0]).length === 1) {
-      throw new Error("only one column with ; delim → retrying with comma");
+      throw new Error("Only one column with ';' → retry with ','");
     }
   } catch (err) {
-    records = parse(text, { delimiter: ',', columns: true, skip_empty_lines: true });
+    records = parse(text, {
+      delimiter: ",",
+      columns: true,
+      skip_empty_lines: true
+    });
   }
 
-  // Normalize column names and add source name
-  const normalized = records.map(row => {
+  const normalized = records.map((row) => {
     const newRow = {};
     for (const key in row) {
       const newKey = key
         .toLowerCase()
         .trim()
-        .replace(/[^a‐z0‐9_]/gi, '_');
+        .replace(/[^a-z0-9_]/gi, "_");
       newRow[newKey] = row[key];
     }
-    newRow.origin_source = sourceName;
+    newRow.origen_fuente = sourceName;
     return newRow;
   });
 
   console.log(`Loaded ${normalized.length} rows for ${sourceName}`);
   return normalized;
-};
+}
 
-const scrapeStationLocations = async (sourceName, url) => {
+async function scrapeStationLocations(sourceName, url) {
   console.log(`Scraping ${sourceName} from ${url}`);
-  const response = await fetch(url, { timeout: 60000 });
+
+  const response = await fetch(url);
   if (!response.ok) {
     console.warn(`Warning: HTTP status ${response.status} for scraping source ${sourceName}`);
     return [];
   }
+
   const html = await response.text();
-
   const match = html.match(/var estaciones\s*=\s*(\{.*?\});/s);
+
   if (!match) {
-    console.warn("Could not find var estaciones = … in HTML");
-    return [];
-  }
-  const data = JSON.parse(match[1]);
-  if (!data.estaciones) {
-    console.warn("Key 'estaciones' not found in scraped data");
+    console.warn("Could not find 'var estaciones = ...' in HTML");
     return [];
   }
 
-  const arr = data.estaciones.map(obj => {
+  let data;
+  try {
+    data = JSON.parse(match[1]);
+  } catch (e) {
+    console.warn("Failed to parse estaciones JSON", e);
+    return [];
+  }
+
+  if (!data.estaciones || !Array.isArray(data.estaciones)) {
+    console.warn("Key 'estaciones' missing or not an array");
+    return [];
+  }
+
+  const arr = data.estaciones.map((obj) => {
     const newObj = {};
     for (const key in obj) {
-      const newKey = key.toLowerCase().trim().replace(/[^a‐z0‐9_]/gi, '_');
+      const newKey = key
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9_]/gi, "_");
       newObj[newKey] = obj[key];
     }
-    newObj.origin_source = sourceName;
+    newObj.origen_fuente = sourceName;
     return newObj;
   });
 
   console.log(`Scraped ${arr.length} stations for ${sourceName}`);
   return arr;
-};
+}
 
-export async function handler(event, context) {
-  const integrated = {};
-
-  for (const [sourceName, url] of Object.entries(DATA_SOURCES)) {
-    let dataRows = [];
-    if (sourceName.includes("Scraping")) {
-      dataRows = await scrapeStationLocations(sourceName, url);
-    } else {
-      dataRows = await loadAndNormalizeSource(sourceName, url);
-    }
-
-    if (dataRows.length > 0) {
-      integrated[sourceName] = dataRows;
-    } else {
-      console.warn(`Source empty or error: ${sourceName}`);
-    }
-
-    // delay a bit between requests to reduce strain / avoid throttling
-    await delay(1000);
+// Vercel serverless function: /api/integrate
+export default async function handler(req, res) {
+  // Opcional: limitar solo a GET
+  if (req.method && req.method !== "GET") {
+    res.statusCode = 405;
+    res.setHeader("Allow", "GET");
+    return res.end("Method Not Allowed");
   }
 
-  return {
-    statusCode: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
-    },
-    body: JSON.stringify(integrated)
-  };
+  try {
+    const integrated = {};
+
+    for (const [sourceName, url] of Object.entries(DATA_SOURCES)) {
+      let dataRows = [];
+      if (sourceName.includes("Scraping")) {
+        dataRows = await scrapeStationLocations(sourceName, url);
+      } else {
+        dataRows = await loadAndNormalizeSource(sourceName, url);
+      }
+
+      if (dataRows.length > 0) {
+        integrated[sourceName] = dataRows;
+      } else {
+        console.warn(`Source empty or error: ${sourceName}`);
+      }
+
+      await delay(1000);
+    }
+
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    // por si llamas desde otro origen en desarrollo
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.end(JSON.stringify(integrated));
+  } catch (err) {
+    console.error("Integration error", err);
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.end(
+      JSON.stringify({
+        error: "Error al integrar fuentes",
+        detail: String(err && err.message ? err.message : err)
+      })
+    );
+  }
 }
