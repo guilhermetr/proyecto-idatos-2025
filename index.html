@@ -490,409 +490,298 @@
     <p>Ministerio de Ganadería, Agricultura y Pesca · Integración de vistas virtuales</p>
   </footer>
 
- <script>
+<script>
   // =====================================================
-  // 0. Config: rutas locales
-  // =====================================================
-
-  const URL_TEMPERATURA_LOCAL = "./inumet_temperatura_del_aire.csv";
-  const URL_LLUVIA_LOCAL = "./inumet_precipitacion_acumulada_horaria.csv";
-
-
-  // =====================================================
-  // 1. CSV parsing y normalización
+  // Config: Netlify backend
   // =====================================================
 
-  function parseCsvToArrays(text, delimiter){
-    const rows=[];
-    let row=[], cell="", inQuotes=false;
-    for(let i=0;i<text.length;i++){
-      const ch=text[i];
-      const next=text[i+1];
-
-      if(ch === '"'){
-        if(inQuotes && next === '"'){
-          cell += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if(ch === delimiter && !inQuotes){
-        row.push(cell);
-        cell="";
-      } else if((ch === "\n" || ch === "\r") && !inQuotes){
-        if(ch === "\r" && next === "\n"){ i++; }
-        row.push(cell);
-        cell="";
-        if(row.length>1 || row[0] !== ""){ rows.push(row); }
-        row=[];
-      } else {
-        cell += ch;
-      }
-    }
-    if(cell !== "" || row.length>0){
-      row.push(cell);
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function arraysToObjects(table){
-    if(!table.length) return [];
-    const headers = table[0];
-    const out=[];
-    for(let i=1;i<table.length;i++){
-      const rowArr = table[i];
-      const obj={};
-      for(let j=0;j<headers.length;j++){
-        obj[headers[j] ?? `col_${j}`] = rowArr[j] ?? "";
-      }
-      out.push(obj);
-    }
-    return out;
-  }
-
-  function normalizeHeaderName(h){
-    return h.toLowerCase()
-      .replace(/\s+/g,'_')
-      .replace(/[^a-z0-9_]/g,'')
-      .trim();
-  }
-
-  function normalizeAndTag(rows, sourceName){
-    const out=[];
-    for(const row of rows){
-      const normRow={};
-      for(const [k,v] of Object.entries(row)){
-        const nk = normalizeHeaderName(k);
-        normRow[nk] = v;
-      }
-      normRow["origen_fuente"]=sourceName;
-      out.push(normRow);
-    }
-    return out;
-  }
-
-  async function fetchCsvAndNormalize(url, sourceName){
-    try{
-      const resp = await fetch(url,{cache:"no-store"});
-      if(!resp.ok) throw new Error("HTTP "+resp.status);
-      const text = await resp.text();
-
-      // intentar ';' primero
-      let table = parseCsvToArrays(text, ';');
-      if(table.length <= 1){
-        table = parseCsvToArrays(text, ',');
-      }
-
-      const objs = arraysToObjects(table);
-      return normalizeAndTag(objs, sourceName);
-
-    }catch(e){
-      console.warn("No se pudo cargar", sourceName, "desde", url, e);
-      return [];
-    }
-  }
+  const API_URL = "https://your-site.netlify.app/.netlify/functions/integrated";
 
   // =====================================================
-  // 2. Mapeo de columnas a nuestro esquema común
+  // Helpers: numeric, dates, etc.
   // =====================================================
 
   function numOrNull(v){
-    if(v===undefined || v===null || v==="") return null;
-    const n = Number(String(v).replace(',','.'));
+    if(v === undefined || v === null || v === "") return null;
+    const n = Number(String(v).replace(",", "."));
     return Number.isNaN(n) ? null : n;
   }
 
   function toIsoDate(raw){
-  if(!raw) return null;
-  let s = String(raw).trim();
+    if(!raw) return null;
+    let s = String(raw).trim();
 
-  if (s.match(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/)) {
-    s = s.split(" ")[0]; // "2020-01-01"
+    // Handle "YYYY-MM-DD HH:MM" -> "YYYY-MM-DD"
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
+      s = s.split(" ")[0];
+    }
+
+    // "YYYY-MM-DD" or "YYYY/MM/DD"
+    let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+    if (m) {
+      const Y = m[1], M = m[2], D = m[3];
+      return `${Y}-${M}-${D}`;
+    }
+
+    // "DD/MM/YYYY" or "DD-MM-YYYY"
+    m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+    if (m) {
+      const D = m[1], M = m[2], Y = m[3];
+      return `${Y}-${M}-${D}`;
+    }
+
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())){
+      const yyyy = String(d.getFullYear()).padStart(4,"0");
+      const mm   = String(d.getMonth()+1).padStart(2,"0");
+      const dd   = String(d.getDate()).padStart(2,"0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return null;
   }
 
-  // YYYY-MM-DD or YYYY/MM/DD
-  let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
-  if(m){
-    const Y=m[1], M=m[2], D=m[3];
-    return `${Y}-${M}-${D}`;
+  function formatDateEs(s){
+    // Quincena: "YYYY-MM-Q1"
+    let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+    if (m){
+      const yy = m[1];
+      const mm = m[2];
+      const q  = m[3];
+      return `Q${q} ${mm}/${yy}`;
+    }
+
+    // Mes: "YYYY-MM"
+    m = s.match(/^(\d{4})-(\d{2})$/);
+    if (m){
+      const yy = m[1];
+      const mm = m[2];
+      return `${mm}/${yy}`;
+    }
+
+    // Día: "YYYY-MM-DD"
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m){
+      const yy = m[1];
+      const mm = m[2];
+      const dd = m[3];
+      return `${dd}/${mm}/${yy}`;
+    }
+
+    return s;
   }
 
-  // DD/MM/YYYY or DD-MM-YYYY
-  m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-  if(m){
-    const D=m[1], M=m[2], Y=m[3];
-    return `${Y}-${M}-${D}`;
+  function formatDateShortEs(s){
+    // Quincena
+    let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+    if (m){
+      const mm = m[2];
+      const q  = m[3];
+      return `Q${q}/${mm}`;
+    }
+
+    // Mes
+    m = s.match(/^(\d{4})-(\d{2})$/);
+    if (m){
+      const yy = m[1];
+      const mm = m[2];
+      const yy2 = yy.slice(-2);
+      return `${mm}/${yy2}`;
+    }
+
+    // Día
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m){
+      const mm = m[2];
+      const dd = m[3];
+      return `${dd}/${mm}`;
+    }
+
+    return s;
   }
 
-  // Fallback Date()
-  const d=new Date(s);
-  if(!Number.isNaN(d.getTime())){
-    const yyyy = String(d.getFullYear()).padStart(4,"0");
-    const mm   = String(d.getMonth()+1).padStart(2,"0");
-    const dd   = String(d.getDate()).padStart(2,"0");
-    return `${yyyy}-${mm}-${dd}`;
+  function fmt1(n){
+    return (n==null||Number.isNaN(n)) ? "--" : Number(n).toFixed(1);
   }
-  return null;
-}
-
-
-  // clima local -> registros estándar
-  function mapClimaRows(normRows){
-  return normRows.map(r=>{
-    // temperatura CSV: fecha; estacion_id; temp_aire
-    const rawFecha = r.fecha || r.fecha_hora || r.fechahora || null;
-    const isoFecha = toIsoDate(rawFecha);
-
-    const regionGuess =
-      r.estacion_id || r.estacion || r.nombre_estacion || null;
-
-    const tempAire = numOrNull(r.temp_aire);
-
-    return {
-      fecha: isoFecha,               // "2020-01-01"
-      region: regionGuess || null,   // "Rocha G3"
-      fruta: null,
-      lluvia_mm: null,               
-      t_min: tempAire,               // we map hourly -> both min/max placeholder
-      t_max: tempAire,
-      produccion_tn: null,
-      precio_kg: null,
-      origen_fuente: "INUMET"
-    };
-  }).filter(r => r.fecha);
-}
-
-function mapLluviaRows(normRows){
-  return normRows.map(r=>{
-    // lluvia CSV: fecha; estacion_id; precip_horario
-    const rawFecha = r.fecha || r.fecha_hora || r.fechahora || null;
-    const isoFecha = toIsoDate(rawFecha);
-
-    const regionGuess =
-      r.estacion_id || r.estacion || r.nombre_estacion || null;
-
-    const precip = numOrNull(r.precip_horario);
-
-    return {
-      fecha: isoFecha,               // "2020-01-01"
-      region: regionGuess || null,   // "Aeropuerto Melilla G3"
-      fruta: null,
-      lluvia_mm: precip,             // mm en esa hora; luego agregaremos por día/quincena/mes
-      t_min: null,                   // no temperatura aquí
-      t_max: null,
-      produccion_tn: null,
-      precio_kg: null,
-      origen_fuente: "INUMET"
-    };
-  }).filter(r => r.fecha);
-}
-
-  function mapIniaRows(normRows){
-    return normRows.map(r=>{
-      const fecha =
-        r.fecha || r.dia || r.periodo || r.fecha_cosecha || r.fechacosecha || null;
-
-      const regionGuess =
-        r.region || r.departamento || r.depto || r.zona ||
-        r.departamento_productor || null;
-
-      const frutaGuess =
-        r.fruta || r.variedad || r.cultivo || r.producto || r.especie || null;
-
-      const produccion_tn = numOrNull(
-        r.produccion_tn || r.produccion || r.toneladas ||
-        r.volumen_tn || r.rendimiento_tn || r.rendimiento || r.volumen
-      );
-
-      const precio_kg = numOrNull(
-        r.precio_kg || r.precio || r.precio_consumidor ||
-        r.preciokg || r.precio_promedio
-      );
-
-      return {
-        fecha: toIsoDate(fecha),
-        region: regionGuess || null,
-        fruta: frutaGuess || null,
-        lluvia_mm: null,
-        t_min: null,
-        t_max: null,
-        produccion_tn,
-        precio_kg,
-        origen_fuente: r.origen_fuente || "Inia"
-      };
-    }).filter(r => r.fecha);
+  function avg(arr){
+    if(!arr.length) return null;
+    return arr.reduce((a,b)=>a+b,0)/arr.length;
+  }
+  function sum(arr){
+    if(!arr.length) return null;
+    return arr.reduce((a,b)=>a+b,0);
   }
 
   // =====================================================
-  // 3. Integración GAV en el navegador
+  // Aggregation helpers (Día / Quincena / Mes)
   // =====================================================
 
-  function mergeSources(integrated){
-  // integrated will now include:
-  //   integrated.climaTemp  (from temperatura CSV)
-  //   integrated.climaRain  (from precipitacion CSV)
-  //   integrated.Inia       (still empty for now)
-
-  const climaTemp = integrated["climaTemp"] || [];
-  const climaRain = integrated["climaRain"] || [];
-  const prod      = integrated["Inia"]      || [];
-
-  // 1. Merge temperatura + lluvia into a single climate map by (fecha, region)
-  const climaMap = new Map();
-  const climaKey = (f,r)=>[f||"",r||""].join("§");
-
-  // seed with temperatura rows
-  for (const row of climaTemp){
-    const k = climaKey(row.fecha, row.region);
-    climaMap.set(k, {
-      fecha: row.fecha,
-      region: row.region || null,
-      fruta: null,
-      lluvia_mm: row.lluvia_mm ?? null,
-      t_min: row.t_min ?? null,
-      t_max: row.t_max ?? null,
-      produccion_tn: null,
-      precio_kg: null,
-      origen_fuente: row.origen_fuente || "INUMET"
-    });
+  function ymdParts(fechaStr) {
+    const [yy,mm,dd] = fechaStr.split("-").map(x=>parseInt(x,10));
+    return {yy,mm,dd};
   }
 
-  // merge in precip rows
-  for (const row of climaRain){
-    const k = climaKey(row.fecha, row.region);
-    if (climaMap.has(k)){
-      const base = climaMap.get(k);
-      if (base.lluvia_mm == null && row.lluvia_mm != null){
-        base.lluvia_mm = row.lluvia_mm;
-        base.origen_fuente = "INUMET";
+  function quincenaFromDay(dayNumber){
+    return (dayNumber <= 15) ? 1 : 2;
+  }
+
+  function aggReducerInit() {
+    return {
+      count: 0,
+      lluvia_mm_sum: 0,
+      t_min_list: [],
+      t_max_list: [],
+      prod_sum: 0,
+      price_list: [],
+      origenes: new Set(),
+      sampleFecha: null,
+      sampleRegion: null,
+      sampleFruta: null
+    };
+  }
+
+  function aggReducerAcc(acc, row){
+    acc.count += 1;
+
+    if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
+      acc.lluvia_mm_sum += Number(row.lluvia_mm);
+    }
+    if (row.t_min != null && !Number.isNaN(row.t_min)) {
+      acc.t_min_list.push(Number(row.t_min));
+    }
+    if (row.t_max != null && !Number.isNaN(row.t_max)) {
+      acc.t_max_list.push(Number(row.t_max));
+    }
+    if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
+      acc.prod_sum += Number(row.produccion_tn);
+    }
+    if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
+      acc.price_list.push(Number(row.precio_kg));
+    }
+    if (row.origen_fuente) {
+      acc.origenes.add(row.origen_fuente);
+    }
+
+    if (!acc.sampleFecha)  acc.sampleFecha  = row.fecha;
+    if (!acc.sampleRegion) acc.sampleRegion = row.region ?? null;
+    if (!acc.sampleFruta)  acc.sampleFruta  = row.fruta ?? null;
+
+    return acc;
+  }
+
+  function finalizeAggRecord(acc, meta){
+    const lluvia_mm = acc.lluvia_mm_sum || null;
+    const t_min = acc.t_min_list.length ? Math.min(...acc.t_min_list) : null;
+    const t_max = acc.t_max_list.length ? Math.max(...acc.t_max_list) : null;
+    const produccion_tn = acc.prod_sum || null;
+    const precio_kg = acc.price_list.length
+      ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
+      : null;
+
+    const origen_fuente = Array.from(acc.origenes).join(" + ") || null;
+
+    let fechaOut = acc.sampleFecha;
+    if (meta.type === "fortnight") {
+      const {yy,mm,quincena} = meta;
+      const mmStr = String(mm).padStart(2,"0");
+      fechaOut = `${yy}-${mmStr}-Q${quincena}`;
+    } else if (meta.type === "month") {
+      const {yy,mm} = meta;
+      const mmStr = String(mm).padStart(2,"0");
+      fechaOut = `${yy}-${mmStr}`;
+    }
+
+    return {
+      fecha: fechaOut,
+      region: acc.sampleRegion,
+      fruta: acc.sampleFruta,
+      lluvia_mm,
+      t_min,
+      t_max,
+      produccion_tn,
+      precio_kg,
+      origen_fuente
+    };
+  }
+
+  function aggregateData(data){
+    const mode = state.agg; // "day" | "fortnight" | "month"
+
+    if (!data.length) return [];
+
+    const buckets = new Map();
+
+    for (const row of data){
+      if (!row.fecha) continue;
+      const {yy,mm,dd} = ymdParts(row.fecha);
+
+      let bucketKey;
+      let meta;
+      if (mode === "day"){
+        bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
+        meta = {type:"day", yy, mm, dd};
+      } else if (mode === "fortnight"){
+        const quin = quincenaFromDay(dd);
+        bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
+        meta = {type:"fortnight", yy, mm, quincena: quin};
       } else {
-        climaMap.set(k + "§rain" + Math.random(), {
-          fecha: row.fecha,
-          region: row.region || null,
-          fruta: null,
-          lluvia_mm: row.lluvia_mm ?? null,
-          t_min: null,
-          t_max: null,
-          produccion_tn: null,
-          precio_kg: null,
-          origen_fuente: "INUMET"
-        });
+        bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
+        meta = {type:"month", yy, mm};
       }
-    } else {
-      climaMap.set(k, {
-        fecha: row.fecha,
-        region: row.region || null,
-        fruta: null,
-        lluvia_mm: row.lluvia_mm ?? null,
-        t_min: null,
-        t_max: null,
-        produccion_tn: null,
-        precio_kg: null,
-        origen_fuente: "INUMET"
-      });
+
+      if (!buckets.has(bucketKey)){
+        buckets.set(bucketKey, { acc: aggReducerInit(), meta });
+      }
+      const bucket = buckets.get(bucketKey);
+      aggReducerAcc(bucket.acc, row);
     }
-  }
 
-  const climaCombined = Array.from(climaMap.values());
+    const out = [];
+    for (const {acc, meta} of buckets.values()){
+      out.push(finalizeAggRecord(acc, meta));
+    }
 
-  const keyFull = (f,r,u)=>[f||"",r||"",u||""].join("§");
-  const joinedMap = new Map();
-
-  // seed with climate
-  for (const row of climaCombined){
-    const k = keyFull(row.fecha, row.region, row.fruta || "");
-    joinedMap.set(k, {
-      fecha: row.fecha,
-      region: row.region || null,
-      fruta: row.fruta || null,
-      lluvia_mm: row.lluvia_mm ?? null,
-      t_min: row.t_min ?? null,
-      t_max: row.t_max ?? null,
-      produccion_tn: null,
-      precio_kg: null,
-      origen_fuente: row.origen_fuente || "INUMET"
+    // sort pseudo-chronologically
+    out.sort((a,b)=>{
+      function parseKey(f){
+        let m = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+        if (m){
+          return {yy:+m[1], mm:+m[2], dd:0, q:+m[3]};
+        }
+        m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m){
+          return {yy:+m[1], mm:+m[2], dd:+m[3], q:0};
+        }
+        m = f.match(/^(\d{4})-(\d{2})$/);
+        if (m){
+          return {yy:+m[1], mm:+m[2], dd:0, q:0};
+        }
+        return {yy:0,mm:0,dd:0,q:0};
+      }
+      const ak = parseKey(a.fecha);
+      const bk = parseKey(b.fecha);
+      if (ak.yy !== bk.yy) return ak.yy - bk.yy;
+      if (ak.mm !== bk.mm) return ak.mm - bk.mm;
+      if (ak.q  !== bk.q ) return ak.q  - bk.q;
+      if (ak.dd !== bk.dd) return ak.dd - bk.dd;
+      return 0;
     });
+
+    return out;
   }
-
-  // enrich with production/price (still none)
-  for (const row of prod){
-    const k_full       = keyFull(row.fecha, row.region, row.fruta || "");
-    const k_regionOnly = keyFull(row.fecha, row.region, "");
-
-    if (joinedMap.has(k_full)){
-      const base = joinedMap.get(k_full);
-      base.fruta = base.fruta || row.fruta || null;
-      base.produccion_tn = row.produccion_tn ?? base.produccion_tn;
-      base.precio_kg     = row.precio_kg ?? base.precio_kg;
-      base.origen_fuente = base.origen_fuente + " + " + (row.origen_fuente || "INIA");
-    } else if (joinedMap.has(k_regionOnly)){
-      const base = joinedMap.get(k_regionOnly);
-      base.fruta = base.fruta || row.fruta || null;
-      base.produccion_tn = row.produccion_tn ?? base.produccion_tn;
-      base.precio_kg     = row.precio_kg ?? base.precio_kg;
-      base.origen_fuente = base.origen_fuente + " + " + (row.origen_fuente || "INIA");
-    } else {
-      joinedMap.set(k_full, {
-        fecha: row.fecha,
-        region: row.region || null,
-        fruta: row.fruta || null,
-        lluvia_mm: null,
-        t_min: null,
-        t_max: null,
-        produccion_tn: row.produccion_tn ?? null,
-        precio_kg: row.precio_kg ?? null,
-        origen_fuente: row.origen_fuente || "INIA"
-      });
-    }
-  }
-
-  return Array.from(joinedMap.values());
-}
-
-
-  // browserIntegration ahora sólo carga clima local
-  async function browserIntegration(){
-  // 1. temperatura del aire
-  const tempNorm = await fetchCsvAndNormalize(
-    URL_TEMPERATURA_LOCAL,
-    "INUMET"
-  );
-  const tempRows = mapClimaRows(tempNorm); // fills t_min/t_max
-
-  // 2. precipitación horaria
-  const rainNorm = await fetchCsvAndNormalize(
-    URL_LLUVIA_LOCAL,
-    "INUMET"
-  );
-  const rainRows = mapLluviaRows(rainNorm); // fills lluvia_mm
-
-  // 3. producción / precios (todavía no hay archivo)
-  const prodRows = []; // future: mapIniaRows(...)
-
-  // 4. fusionar ambas fuentes de clima + prodRows
-  return mergeSources({
-    "climaTemp": tempRows,
-    "climaRain": rainRows,
-    "Inia": prodRows
-  });
-}
-
 
   // =====================================================
-  // 4. Estado UI, helpers, render
+  // Global state and DOM refs
   // =====================================================
 
   let combinedRows = [];
 
   const state = {
-    fruit:null,
-    region:null,
-    startDate:null,
-    endDate:null,
-    agg:"month",
-    filteredData:[]
+    fruit: null,
+    region: null,
+    startDate: null,
+    endDate: null,
+    agg: "month",
+    filteredData: []
   };
 
   const fruitSelect       = document.getElementById("fruitSelect");
@@ -918,293 +807,70 @@ function mapLluviaRows(normRows){
   const prodCtx  = document.getElementById("prodChart").getContext("2d");
   const priceCtx = document.getElementById("priceChart").getContext("2d");
 
-  function toDate(s){
+  // =====================================================
+  // Backend integration
+  // =====================================================
+
+  async function fetchBackendTable(){
+    const resp = await fetch(API_URL, { cache: "no-store" });
+    if(!resp.ok){
+      throw new Error("Error al llamar al backend: " + resp.status);
+    }
+    const json = await resp.json();
+
+    // soportar varios formatos comunes
+    let rows = null;
+    if (Array.isArray(json)) {
+      rows = json;
+    } else if (Array.isArray(json.data)) {
+      rows = json.data;
+    } else if (Array.isArray(json.rows)) {
+      rows = json.rows;
+    } else {
+      throw new Error("Formato de respuesta inesperado del backend");
+    }
+
+    // normalizar mínimamente los nombres clave para el frontend
+    return rows.map(r => {
+      const iso = toIsoDate(r.fecha ?? r.date);
+      return {
+        fecha: iso,
+        region: r.region ?? r.zona ?? r.estacion_id ?? null,
+        fruta: r.fruta ?? r.variedad ?? null,
+        lluvia_mm: numOrNull(r.lluvia_mm ?? r.precip_mm ?? r.precipitacion_mm ?? r.precip_horario),
+        t_min: numOrNull(r.t_min ?? r.temp_min),
+        t_max: numOrNull(r.t_max ?? r.temp_max ?? r.temp_aire),
+        produccion_tn: numOrNull(r.produccion_tn ?? r.produccion),
+        precio_kg: numOrNull(r.precio_kg ?? r.precio),
+        origen_fuente: r.origen_fuente ?? "Backend"
+      };
+    }).filter(row => row.fecha);
+  }
+
+  async function browserIntegration(){
+    const rows = await fetchBackendTable();
+    return rows;
+  }
+
+  // =====================================================
+  // Filtering, KPIs, table, charts
+  // =====================================================
+
+  function toDateStrict(s){
     const [y,m,d] = s.split("-").map(Number);
     return new Date(y,m-1,d);
   }
-  
-  function formatDateEs(s){
-  // 1) Quincena: "YYYY-MM-Q1" / "YYYY-MM-Q2"
-  let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-  if (m){
-    const yy = m[1];
-    const mm = m[2];
-    const q  = m[3]; // "1" or "2"
-    // Show as "Q1 01/2020"
-    return `Q${q} ${mm}/${yy}`;
-  }
-
-  // 2) Mes: "YYYY-MM"
-  m = s.match(/^(\d{4})-(\d{2})$/);
-  if (m){
-    const yy = m[1];
-    const mm = m[2];
-    // Show as "01/2020"
-    return `${mm}/${yy}`;
-  }
-
-  // 3) Día: "YYYY-MM-DD"
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m){
-    const yy = m[1];
-    const mm = m[2];
-    const dd = m[3];
-    return `${dd}/${mm}/${yy}`;
-  }
-
-  // fallback: just return the raw string
-  return s;
-}
-
-function formatDateShortEs(s){
-
-  // Quincena: "YYYY-MM-Q1"
-  let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-  if (m){
-    const yy = m[1];
-    const mm = m[2];
-    const q  = m[3];
-    // Short label like "Q1/01"
-    return `Q${q}/${mm}`;
-  }
-
-  // Mes: "YYYY-MM"
-  m = s.match(/^(\d{4})-((\d{2}))$/);
-  if (m){
-    const yy = m[1];
-    const mm = m[2];
-    // Short label like "01/20" (last 2 digits of year)
-    const yy2 = yy.slice(-2);
-    return `${mm}/${yy2}`;
-  }
-
-  // Día: "YYYY-MM-DD"
-  m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m){
-    const mm = m[2];
-    const dd = m[3];
-    return `${dd}/${mm}`;
-  }
-
-  // fallback
-  return s;
-}
-
-
-  function fmt1(n){
-    return (n==null||Number.isNaN(n)) ? "--" : Number(n).toFixed(1);
-  }
-  function avg(arr){
-    if(!arr.length) return null;
-    return arr.reduce((a,b)=>a+b,0)/arr.length;
-  }
-  function sum(arr){
-    if(!arr.length) return null;
-    return arr.reduce((a,b)=>a+b,0);
-  }
-
-  function ymdParts(fechaStr) {
-  const [yy,mm,dd] = fechaStr.split("-").map(x=>parseInt(x,10));
-  return {yy,mm,dd};
-}
-
-function quincenaFromDay(dayNumber){
-  return (dayNumber <= 15) ? 1 : 2;
-}
-
-function aggReducerInit() {
-  return {
-    count: 0,
-    lluvia_mm_sum: 0,
-    t_min_list: [],
-    t_max_list: [],
-    prod_sum: 0,
-    price_list: [],
-    origenes: new Set(),
-    sampleFecha: null, // for label
-    sampleRegion: null,
-    sampleFruta: null
-  };
-}
-
-function aggReducerAcc(acc, row){
-  acc.count += 1;
-
-  if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
-    acc.lluvia_mm_sum += Number(row.lluvia_mm);
-  }
-  if (row.t_min != null && !Number.isNaN(row.t_min)) {
-    acc.t_min_list.push(Number(row.t_min));
-  }
-  if (row.t_max != null && !Number.isNaN(row.t_max)) {
-    acc.t_max_list.push(Number(row.t_max));
-  }
-  if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
-    acc.prod_sum += Number(row.produccion_tn);
-  }
-  if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
-    acc.price_list.push(Number(row.precio_kg));
-  }
-
-  if (row.origen_fuente) {
-    acc.origenes.add(row.origen_fuente);
-  }
-
-  if (!acc.sampleFecha)  acc.sampleFecha  = row.fecha;
-  if (!acc.sampleRegion) acc.sampleRegion = row.region ?? null;
-  if (!acc.sampleFruta)  acc.sampleFruta  = row.fruta ?? null;
-
-  return acc;
-}
-
-function finalizeAggRecord(bucketKey, acc, bucketMeta){
-  const lluvia_mm = acc.lluvia_mm_sum || null;
-
-  const t_min = acc.t_min_list.length
-    ? Math.min(...acc.t_min_list)
-    : null;
-
-  const t_max = acc.t_max_list.length
-    ? Math.max(...acc.t_max_list)
-    : null;
-
-  const produccion_tn = acc.prod_sum || null;
-
-  const precio_kg = acc.price_list.length
-    ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
-    : null;
-
-  const origen_fuente = Array.from(acc.origenes).join(" + ");
-
-  let fechaOut = acc.sampleFecha;
-  if (bucketMeta.type === "fortnight") {
-    const {yy,mm} = bucketMeta;
-    const q = bucketMeta.quincena;
-    const mmStr = String(mm).padStart(2,"0");
-    fechaOut = `${yy}-${mmStr}-Q${q}`;
-  }
-  if (bucketMeta.type === "month") {
-    const {yy,mm} = bucketMeta;
-    const mmStr = String(mm).padStart(2,"0");
-    fechaOut = `${yy}-${mmStr}`;
-  }
-
-  return {
-    fecha: fechaOut,
-    region: acc.sampleRegion,
-    fruta: acc.sampleFruta,
-    lluvia_mm,
-    t_min,
-    t_max,
-    produccion_tn,
-    precio_kg,
-    origen_fuente
-  };
-}
-
-
-  function aggregateData(data){
-  const mode = state.agg; // "day" | "fortnight" | "month"
-
-  if (!data.length) return [];
-
-
-  const buckets = new Map();
-
-  for (const row of data){
-    if (!row.fecha) continue;
-
-    const {yy,mm,dd} = ymdParts(row.fecha);
-
-    let bucketKey;
-    let meta;
-    if (mode === "day"){
-      // group by (yyyy-mm-dd, region, fruta)
-      bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
-      meta = {type:"day", yy, mm, dd};
-    } else if (mode === "fortnight"){
-      const quin = quincenaFromDay(dd);
-      // group by (yyyy-mm, quincena, region, fruta)
-      bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
-      meta = {type:"fortnight", yy, mm, quincena: quin};
-    } else {
-      // default "month"
-      // group by (yyyy-mm, region, fruta)
-      bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
-      meta = {type:"month", yy, mm};
-    }
-
-    if (!buckets.has(bucketKey)){
-      buckets.set(bucketKey, {
-        acc: aggReducerInit(),
-        meta
-      });
-    }
-
-    const bucket = buckets.get(bucketKey);
-    aggReducerAcc(bucket.acc, row);
-  }
-
-  const out = [];
-  for (const {acc, meta} of buckets.values()){
-    out.push(finalizeAggRecord(null, acc, meta));
-  }
-
-  out.sort((a,b)=>{
-    function parseKey(f){
-      const qm = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-      if (qm){
-        return {
-          yy:parseInt(qm[1],10),
-          mm:parseInt(qm[2],10),
-          dd:0,
-          q:parseInt(qm[3],10)
-        };
-      }
-      const dm = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dm){
-        return {
-          yy:parseInt(dm[1],10),
-          mm:parseInt(dm[2],10),
-          dd:parseInt(dm[3],10),
-          q:0
-        };
-      }
-      const mmOnly = f.match(/^(\d{4})-(\d{2})$/);
-      if (mmOnly){
-        return {
-          yy:parseInt(mmOnly[1],10),
-          mm:parseInt(mmOnly[2],10),
-          dd:0,
-          q:0
-        };
-      }
-      return {yy:0,mm:0,dd:0,q:0};
-    }
-    const ak = parseKey(a.fecha);
-    const bk = parseKey(b.fecha);
-
-    if (ak.yy !== bk.yy) return ak.yy - bk.yy;
-    if (ak.mm !== bk.mm) return ak.mm - bk.mm;
-    if (ak.q  !== bk.q ) return ak.q  - bk.q;
-    if (ak.dd !== bk.dd) return ak.dd - bk.dd;
-    return 0;
-  });
-
-  return out;
-}
-
 
   function applyFilters(){
     const fFruit = state.fruit;
     const fRegion = state.region;
-    const fStart = state.startDate ? toDate(state.startDate) : null;
-    const fEnd   = state.endDate ? toDate(state.endDate)   : null;
+    const fStart = state.startDate ? toDateStrict(state.startDate) : null;
+    const fEnd   = state.endDate ? toDateStrict(state.endDate)   : null;
 
     let out = combinedRows.filter(r=>{
       if (fFruit && r.fruta !== fFruit) return false;
       if (fRegion && r.region !== fRegion) return false;
-      const d = toDate(r.fecha);
+      const d = toDateStrict(r.fecha);
       if (fStart && d < fStart) return false;
       if (fEnd && d > fEnd) return false;
       return true;
@@ -1233,7 +899,7 @@ function finalizeAggRecord(bucketKey, acc, bucketMeta){
     kpiTempMax.textContent   = fmt1(avgTmax);
     kpiTempMeta.textContent  = `Promedio ${aggTxt}`;
 
-    kpiProduction.textContent = (totalProd ?? "--");
+    kpiProduction.textContent = totalProd ?? "--";
     kpiProdMeta.textContent   = `Suma ${aggTxt}`;
 
     kpiPrice.textContent     = fmt1(avgPrice);
@@ -1279,7 +945,9 @@ function finalizeAggRecord(bucketKey, acc, bucketMeta){
     const w=ctx.canvas.width,h=ctx.canvas.height;
     ctx.clearRect(0,0,w,h);
 
-    const bg="#1e2538",axis="rgba(255,255,255,0.3)",line="#38bdf8",text="rgba(255,255,255,0.7)",grid="rgba(255,255,255,0.07)";
+    const bg="#1e2538",axis="rgba(255,255,255,0.3)",line="#38bdf8",
+          text="rgba(255,255,255,0.7)",grid="rgba(255,255,255,0.07)";
+
     ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
 
     if(!data.length){
@@ -1451,6 +1119,10 @@ function finalizeAggRecord(bucketKey, acc, bucketMeta){
     URL.revokeObjectURL(url);
   }
 
+  // =====================================================
+  // Events
+  // =====================================================
+
   applyFiltersBtn.addEventListener("click", ()=>{
     state.fruit     = fruitSelect.value;
     state.region    = regionSelect.value;
@@ -1470,17 +1142,30 @@ function finalizeAggRecord(bucketKey, acc, bucketMeta){
   });
 
   refreshDataBtn.addEventListener("click", async ()=>{
-    // Load fresh local CSV again.
     combinedRows = await browserIntegration();
     initFilterControlsFromData();
     renderAll();
   });
 
-  // boot
+  // =====================================================
+  // Boot
+  // =====================================================
+
   (async function boot(){
-    combinedRows = await browserIntegration();
-    initFilterControlsFromData();
-    renderAll();
+    try{
+      combinedRows = await browserIntegration();
+      initFilterControlsFromData();
+      renderAll();
+    }catch(e){
+      console.error(e);
+      dataTableBody.innerHTML = "";
+      const tr=document.createElement("tr");
+      const td=document.createElement("td");
+      td.colSpan=9;
+      td.textContent="Error al cargar datos desde el backend.";
+      tr.appendChild(td);
+      dataTableBody.appendChild(tr);
+    }
   })();
 </script>
 
