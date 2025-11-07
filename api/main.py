@@ -82,7 +82,7 @@ def wrapper_fuentes(source_name: str, url: str) -> pd.DataFrame:
                 df = pd.read_csv(url, sep=",", on_bad_lines="skip", encoding="utf-8")
         else:
             # URL remota
-            resp = requests.get(url, timeout=60)
+            resp = requests.get(url, timeout=180)
             resp.raise_for_status()
             content = StringIO(resp.text)
             try:
@@ -127,7 +127,7 @@ def wrapper_web_scraping_estaciones(source_name: str, url: str) -> pd.DataFrame:
     """
     print(f"[wrapper_web_scraping_estaciones] Cargando {source_name}")
     try:
-        resp = requests.get(url, timeout=60)
+        resp = requests.get(url, timeout=180)
         resp.raise_for_status()
         html = resp.text
 
@@ -207,60 +207,77 @@ def mediador() -> pd.DataFrame:
     # 3.2. RESOLUCIÓN DE HETEROGENEIDADES CLIMÁTICAS (INUMET)
     
     print("--- Resolviendo heterogeneidades climáticas (INUMET)")
-    
-    # Unificación de Datos Climáticos Horarios (Por Enriquecimiento de Clave)
-    df_temp = integrated_data['INUMET_temperatura'].rename(columns={'temp_aire': 'temperatura_c'})
-    df_hum = integrated_data['INUMET_humedad'].rename(columns={'hum_relativa': 'humedad_pje'})
-    df_precip = integrated_data['INUMET_precipitaciones'].rename(columns={'precip_horario': 'precipitacion_mm'})
-    df_estaciones = integrated_data['INUMET_estaciones']
-    
-    # Pre-procesamiento de fechas y claves
-    # Conversión de Fecha/Hora
-    df_temp['fecha'] = pd.to_datetime(df_temp['fecha'], errors='coerce')
-    df_hum['fecha'] = pd.to_datetime(df_hum['fecha'], errors='coerce')
-    df_precip['fecha'] = pd.to_datetime(df_precip['fecha'], errors='coerce')
 
-    # Fusión inicial de clima (Horario)
-    origen_temp = df_temp['origen_fuente'].iloc[0] 
-    origen_hum = df_hum['origen_fuente'].iloc[0]  
-    origen_precip = df_precip['origen_fuente'].iloc[0]
-    lista_origenes_clima = [origen_precip, origen_temp, origen_hum]
-    origen_fuente_clima_combinado = ', '.join(lista_origenes_clima)
+    # Fuentes requeridas para construir clima mensual
+    required_clima = [
+        "INUMET_temperatura",
+        "INUMET_humedad",
+        "INUMET_precipitaciones",
+        "INUMET_estaciones",
+    ]
 
-    df_clima_horario = df_temp.merge(df_hum[['fecha', 'estacion_id', 'humedad_pje']], 
-                                     on=['fecha', 'estacion_id'], how='outer')
-    df_clima_horario = df_clima_horario.merge(df_precip[['fecha', 'estacion_id', 'precipitacion_mm']],
-                                              on=['fecha', 'estacion_id'], how='outer')
-    
-    # Resolución de Granularidad Espacial (Estación -> Departamento/Zona) 
-    # Se añade el departamento a cada registro de clima (Enriquecimiento) y se descartan los registros sin ubicación estacion->departamento
-    df_clima_horario = df_clima_horario.merge(df_estaciones[['estacion_id', 'departamento']], 
-                                              left_on='estacion_id', right_on='estacion_id', how='inner')
+    missing = [k for k in required_clima if k not in integrated_data]
 
-    # Resolución de Granularidad Temporal (Horario -> Mensual) 
-    # Se define la clave temporal (Mes_año) para el Esquema Global 
-    df_clima_horario['Mes_año'] = df_clima_horario['fecha'].dt.to_period('M')#.dt.to_timestamp()
-    
-    # Agregación a nivel Mensual (Mes_año, Departamento)
-    df_clima_mensual = df_clima_horario.groupby(['Mes_año', 'departamento']).agg(
-        # Suma total para Precipitación
-        precip_total_mm=('precipitacion_mm', 'sum'), 
-        # Promedio para Temperatura y Humedad
-        temp_media_c=('temperatura_c', 'mean'), 
-        hum_media_pje=('humedad_pje', 'mean')
-    ).reset_index()
+    if missing:
+        print(f"[clima] Advertencia: faltan fuentes {missing}. Se continúa sin componente climática.")
+        # DataFrame vacío pero con las columnas esperadas, para que los merges no rompan
+        df_clima_mensual = pd.DataFrame(
+            columns=["Mes_año", "Departamento", "Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje"]
+        )
+    else:
+        df_temp = integrated_data['INUMET_temperatura'].rename(columns={'temp_aire': 'temperatura_c'})
+        df_hum = integrated_data['INUMET_humedad'].rename(columns={'hum_relativa': 'humedad_pje'})
+        df_precip = integrated_data['INUMET_precipitaciones'].rename(columns={'precip_horario': 'precipitacion_mm'})
+        df_estaciones = integrated_data['INUMET_estaciones']
 
-    # APLICAR REDONDEO: Todas las cifras numéricas a un solo dígito decimal.
-    df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']] = df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']].round(1)
-    
-    df_clima_mensual = df_clima_mensual.rename(columns={'precip_total_mm': 'Precip_Total_mm'})
-    df_clima_mensual = df_clima_mensual.rename(columns={'temp_media_c': 'Temp_Media_C'})
-    df_clima_mensual = df_clima_mensual.rename(columns={'hum_media_pje': 'Hum_Media_Pje'})
-    df_clima_mensual = df_clima_mensual.rename(columns={'departamento': 'Departamento'})
-    # Agregar data provenance
-    df_clima_mensual['origen_fuente'] = origen_fuente_clima_combinado 
-    
+        # Conversión de fechas
+        df_temp['fecha'] = pd.to_datetime(df_temp['fecha'], errors='coerce')
+        df_hum['fecha'] = pd.to_datetime(df_hum['fecha'], errors='coerce')
+        df_precip['fecha'] = pd.to_datetime(df_precip['fecha'], errors='coerce')
+
+        # Provenir de origen_fuente solo si hay filas
+        origen_temp = df_temp['origen_fuente'].iloc[0]
+        origen_hum = df_hum['origen_fuente'].iloc[0]
+        origen_precip = df_precip['origen_fuente'].iloc[0]
+        origen_fuente_clima_combinado = ', '.join([origen_precip, origen_temp, origen_hum])
+
+        # Merge horario
+        df_clima_horario = df_temp.merge(
+            df_hum[['fecha', 'estacion_id', 'humedad_pje']],
+            on=['fecha', 'estacion_id'],
+            how='outer'
+        )
+        df_clima_horario = df_clima_horario.merge(
+            df_precip[['fecha', 'estacion_id', 'precipitacion_mm']],
+            on=['fecha', 'estacion_id'],
+            how='outer'
+        )
+
+        # Enriquecimiento con departamento
+        df_clima_horario = df_clima_horario.merge(
+            df_estaciones[['estacion_id', 'departamento']],
+            on='estacion_id',
+            how='inner'
+        )
+
+        # Mes_año
+        df_clima_horario['Mes_año'] = df_clima_horario['fecha'].dt.to_period('M')
+
+        # Agregación mensual
+        df_clima_mensual = df_clima_horario.groupby(['Mes_año', 'departamento']).agg(
+            Precip_Total_mm=('precipitacion_mm', 'sum'),
+            Temp_Media_C=('temperatura_c', 'mean'),
+            Hum_Media_Pje=('humedad_pje', 'mean'),
+        ).reset_index()
+
+        df_clima_mensual[['Precip_Total_mm', 'Temp_Media_C', 'Hum_Media_Pje']] = \
+            df_clima_mensual[['Precip_Total_mm', 'Temp_Media_C', 'Hum_Media_Pje']].round(1)
+
+        df_clima_mensual = df_clima_mensual.rename(columns={'departamento': 'Departamento'})
+        df_clima_mensual['origen_fuente'] = origen_fuente_clima_combinado
+
     print("Éxito")
+
 
     # 3.3. RESOLUCIÓN DE HETEROGENEIDADES DE PRODUCCIÓN (UAM)
     
