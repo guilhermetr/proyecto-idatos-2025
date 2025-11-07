@@ -17,8 +17,8 @@ import traceback
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Si el CSV filtered_precios.csv está en el repo, lo referenciamos directamente.
-MEF_PRECIOS_LOCAL = os.path.join(BASE_DIR, "filtered_precios.csv")
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
+MEF_PRECIOS_LOCAL = os.path.join(PROJECT_ROOT, "filtered_precios.csv")
 
 DATA_SOURCES = {
     # INUMET observaciones horarias/diarias
