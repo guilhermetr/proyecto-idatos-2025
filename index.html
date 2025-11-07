@@ -327,7 +327,7 @@
     </div>
     <div class="app-header__global-controls">
       <button id="exportCsvBtn" class="btn btn-outline">Descargar CSV</button>
-      <button id="resetFiltersBtn" class="btn btn-ghost">Reiniciar filtros</button>
+      <button id="toggleCompleteBtn" class="btn btn-ghost">Solo filas completas</button>
     </div>
   </header>
 
@@ -413,7 +413,6 @@
               <tr>
                 <th>Fecha</th>
                 <th>Zona</th>
-                <th>Fruta</th>
                 <th>Lluvia (mm)</th>
                 <th>T. prom (°C)</th>
                 <th>Humedad (%)</th>
@@ -639,28 +638,29 @@
       startDate: null,
       endDate: null,
       agg: "month",
+      onlyComplete: false,
       filteredData: []
     };
 
-    const regionSelect      = document.getElementById("regionSelect");
-    const startDateInput    = document.getElementById("startDate");
-    const endDateInput      = document.getElementById("endDate");
-    const aggSelect         = document.getElementById("aggSelect");
-    const applyFiltersBtn   = document.getElementById("applyFiltersBtn");
-    const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
-    const exportCsvBtn      = document.getElementById("exportCsvBtn");
+    const regionSelect        = document.getElementById("regionSelect");
+    const startDateInput      = document.getElementById("startDate");
+    const endDateInput        = document.getElementById("endDate");
+    const aggSelect           = document.getElementById("aggSelect");
+    const applyFiltersBtn     = document.getElementById("applyFiltersBtn");
+    const toggleCompleteBtn   = document.getElementById("toggleCompleteBtn");
+    const exportCsvBtn        = document.getElementById("exportCsvBtn");
 
-    const kpiTemp           = document.getElementById("kpiTemp");
-    const kpiTempMeta       = document.getElementById("kpiTempMeta");
-    const kpiProduction     = document.getElementById("kpiProduction");
-    const kpiProdMeta       = document.getElementById("kpiProdMeta");
-    const kpiPrice          = document.getElementById("kpiPrice");
-    const kpiPriceMeta      = document.getElementById("kpiPriceMeta");
+    const kpiTemp             = document.getElementById("kpiTemp");
+    const kpiTempMeta         = document.getElementById("kpiTempMeta");
+    const kpiProduction       = document.getElementById("kpiProduction");
+    const kpiProdMeta         = document.getElementById("kpiProdMeta");
+    const kpiPrice            = document.getElementById("kpiPrice");
+    const kpiPriceMeta        = document.getElementById("kpiPriceMeta");
 
-    const dataTableBody     = document.getElementById("dataTableBody");
+    const dataTableBody       = document.getElementById("dataTableBody");
 
-    const loadingOverlay = document.getElementById("loadingOverlay");
-    const loadingTextEl  = document.getElementById("loadingText");
+    const loadingOverlay      = document.getElementById("loadingOverlay");
+    const loadingTextEl       = document.getElementById("loadingText");
 
     // ================= Loading UI =================
 
@@ -671,7 +671,7 @@
       } else {
         loadingOverlay.classList.add("hidden");
       }
-      [applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
+      [applyFiltersBtn, toggleCompleteBtn, exportCsvBtn].forEach(btn=>{
         if(!btn) return;
         btn.disabled = !!isLoading;
       });
@@ -697,7 +697,7 @@
           : [];
 
       console.log("[frontend] Filas recibidas:", rows.length);
-      console.log(rows[0])
+      console.log(rows[0]);
 
       if (!rows.length){
         return [];
@@ -750,7 +750,7 @@
         dataTableBody.innerHTML = "";
         const tr=document.createElement("tr");
         const td=document.createElement("td");
-        td.colSpan=9;
+        td.colSpan=8;
         td.textContent="Error al cargar datos desde el backend.";
         tr.appendChild(td);
         dataTableBody.appendChild(tr);
@@ -789,7 +789,19 @@
         return true;
       });
 
-      state.filteredData = aggregateData(out);
+      let aggregated = aggregateData(out);
+
+      if (state.onlyComplete){
+        aggregated = aggregated.filter(row =>
+          row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm) &&
+          row.temp_c != null && !Number.isNaN(row.temp_c) &&
+          row.hum_pje != null && !Number.isNaN(row.hum_pje) &&
+          row.produccion_tn != null && !Number.isNaN(row.produccion_tn) &&
+          row.precio_kg != null && !Number.isNaN(row.precio_kg)
+        );
+      }
+
+      state.filteredData = aggregated;
     }
 
     const aggLabelEs = { month:"Mes", year:"Año" };
@@ -824,7 +836,7 @@
       if (!state.filteredData.length){
         const tr=document.createElement("tr");
         const td=document.createElement("td");
-        td.colSpan=9;
+        td.colSpan=8;
         td.textContent="Sin datos para los filtros seleccionados.";
         tr.appendChild(td);
         dataTableBody.appendChild(tr);
@@ -836,13 +848,12 @@
         const cells=[
           formatDateEs(row.fecha),
           row.region ?? "",
-          row.fruta ?? "",
           row.lluvia_mm != null    ? fmt1(row.lluvia_mm)      : "",
           row.temp_c != null       ? fmt1(row.temp_c)         : "",
           row.hum_pje != null      ? fmt1(row.hum_pje)        : "",
           row.produccion_tn != null? fmt1(row.produccion_tn)  : "",
           row.precio_kg != null    ? fmt1(row.precio_kg)      : "",
-          row.origen_fuente ?? ""
+          getFuenteLabel(row)      // nuevo cálculo dinámico
         ];
         cells.forEach(v=>{
           const td=document.createElement("td");
@@ -851,6 +862,20 @@
         });
         dataTableBody.appendChild(tr);
       });
+    }
+
+
+    function updateCompleteButton(){
+      if (!toggleCompleteBtn) return;
+      if (state.onlyComplete){
+        toggleCompleteBtn.classList.add("btn-primary");
+        toggleCompleteBtn.classList.remove("btn-ghost");
+        toggleCompleteBtn.textContent = "Ver todas las filas";
+      } else {
+        toggleCompleteBtn.classList.remove("btn-primary");
+        toggleCompleteBtn.classList.add("btn-ghost");
+        toggleCompleteBtn.textContent = "Solo filas completas";
+      }
     }
 
     function renderAll(){
@@ -872,10 +897,33 @@
       startDateInput.value = minDate && minDate.length===7 ? `${minDate}-01` : (minDate || "");
       endDateInput.value   = maxDate && maxDate.length===7 ? `${maxDate}-01` : (maxDate || "");
 
-      state.region    = "";
-      state.startDate = minDate || "";
-      state.endDate   = maxDate || "";
-      state.agg       = aggSelect.value;
+      state.region        = "";
+      state.startDate     = minDate || "";
+      state.endDate       = maxDate || "";
+      state.agg           = aggSelect.value;
+      state.onlyComplete  = false;
+      updateCompleteButton();
+    }
+
+    function getFuenteLabel(row){
+      const sources = [];
+      // INUMET: si hay al menos un dato climático
+      if (
+        (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) ||
+        (row.temp_c    != null && !Number.isNaN(row.temp_c))    ||
+        (row.hum_pje   != null && !Number.isNaN(row.hum_pje))
+      ){
+        sources.push("INUMET");
+      }
+      // UAM: si hay producción
+      if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)){
+        sources.push("UAM");
+      }
+      // MEF: si hay precio
+      if (row.precio_kg != null && !Number.isNaN(row.precio_kg)){
+        sources.push("MEF");
+      }
+      return sources.join(" · ");
     }
 
     // ================= Events =================
@@ -888,8 +936,9 @@
       renderAll();
     });
 
-    resetFiltersBtn.addEventListener("click", ()=>{
-      initFilterControlsFromData();
+    toggleCompleteBtn.addEventListener("click", ()=>{
+      state.onlyComplete = !state.onlyComplete;
+      updateCompleteButton();
       renderAll();
     });
 
@@ -899,14 +948,26 @@
         return;
       }
       const headers=[
-        "fecha","region","fruta",
+        "fecha","region",
         "lluvia_mm","temp_c","hum_pje",
         "produccion_tn","precio_kg",
-        "origen_fuente"
+        "fuente"
       ];
       const csv=[
         headers.join(","),
-        ...state.filteredData.map(r=>headers.map(h=>r[h]??"").join(","))
+        ...state.filteredData.map(r=>{
+          const fuente = getFuenteLabel(r);
+          return [
+            r.fecha ?? "",
+            r.region ?? "",
+            r.lluvia_mm ?? "",
+            r.temp_c ?? "",
+            r.hum_pje ?? "",
+            r.produccion_tn ?? "",
+            r.precio_kg ?? "",
+            fuente
+          ].join(",");
+        })
       ].join("\n");
 
       const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
