@@ -357,7 +357,6 @@
       to{transform:rotate(360deg)}
     }
     .hidden{display:none}
-
   </style>
 </head>
 <body>
@@ -419,7 +418,7 @@
         <h2 class="filter-block__title">Notas metodológicas</h2>
         <ul class="meta-list">
           <li>Los datos se consultan a través de una función serverless que descarga y normaliza las fuentes públicas.</li>
-          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos datos integrados bajo demanda.</li>
+          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos integrados bajo demanda.</li>
         </ul>
       </section>
     </aside>
@@ -521,646 +520,663 @@
   </footer>
 
 <script>
-  // ================= Config: backend =================
-  const API_URL = "/api/main";
+  // Evita boots múltiples si el script se evalúa más de una vez (Vercel dev, HMR, iframes, etc.)
+  if (window.__MGAP_BOOTED__) {
+    console.log("[frontend] Boot ya ejecutado, se omite inicialización duplicada");
+  } else {
+    window.__MGAP_BOOTED__ = true;
 
-  // ================= Helpers: numeric, dates =================
+    // ================= Config: backend =================
+    const API_URL = "/api/main";
 
-  function numOrNull(v){
-    if(v === undefined || v === null || v === "") return null;
-    const n = Number(String(v).replace(",", "."));
-    return Number.isNaN(n) ? null : n;
-  }
+    // ================= Helpers: numeric, dates =================
 
-  function toIsoDate(raw){
-    if(!raw) return null;
-    let s = String(raw).trim();
-
-    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
-      s = s.split(" ")[0];
+    function numOrNull(v){
+      if(v === undefined || v === null || v === "") return null;
+      const n = Number(String(v).replace(",", "."));
+      return Number.isNaN(n) ? null : n;
     }
 
-    let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    function toIsoDate(raw){
+      if(!raw) return null;
+      let s = String(raw).trim();
 
-    m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
+        s = s.split(" ")[0];
+      }
 
-    m = s.match(/^(\d{4})-(\d{2})$/);
-    if (m) return `${m[1]}-${m[2]}`;
+      let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())){
-      const yyyy = String(d.getFullYear()).padStart(4,"0");
-      const mm   = String(d.getMonth()+1).padStart(2,"0");
-      const dd   = String(d.getDate()).padStart(2,"0");
-      return `${yyyy}-${mm}-${dd}`;
+      m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+
+      m = s.match(/^(\d{4})-(\d{2})$/);
+      if (m) return `${m[1]}-${m[2]}`;
+
+      const d = new Date(s);
+      if (!Number.isNaN(d.getTime())){
+        const yyyy = String(d.getFullYear()).padStart(4,"0");
+        const mm   = String(d.getMonth()+1).padStart(2,"0");
+        const dd   = String(d.getDate()).padStart(2,"0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return null;
     }
-    return null;
-  }
 
-  function formatDateEs(s){
-    let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-    if (m) return `Q${m[3]} ${m[2]}/${m[1]}`;
+    function formatDateEs(s){
+      let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+      if (m) return `Q${m[3]} ${m[2]}/${m[1]}`;
 
-    m = s.match(/^(\d{4})-(\d{2})$/);
-    if (m) return `${m[2]}/${m[1]}`;
+      m = s.match(/^(\d{4})-(\d{2})$/);
+      if (m) return `${m[2]}/${m[1]}`;
 
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
-    return s;
-  }
+      return s;
+    }
 
-  function formatDateShortEs(s){
-    let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-    if (m) return `Q${m[3]}/${m[2]}`;
+    function formatDateShortEs(s){
+      let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+      if (m) return `Q${m[3]}/${m[2]}`;
 
-    m = s.match(/^(\d{4})-(\d{2})$/);
-    if (m) return `${m[2]}/${m[1].slice(-2)}`;
+      m = s.match(/^(\d{4})-(\d{2})$/);
+      if (m) return `${m[2]}/${m[1].slice(-2)}`;
 
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) return `${m[3]}/${m[2]}`;
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[3]}/${m[2]}`;
 
-    return s;
-  }
+      return s;
+    }
 
-  function fmt1(n){
-    return (n==null||Number.isNaN(n)) ? "--" : Number(n).toFixed(1);
-  }
-  function avg(arr){
-    if(!arr.length) return null;
-    return arr.reduce((a,b)=>a+b,0)/arr.length;
-  }
-  function sum(arr){
-    if(!arr.length) return null;
-    return arr.reduce((a,b)=>a+b,0);
-  }
+    function fmt1(n){
+      return (n==null||Number.isNaN(n)) ? "--" : Number(n).toFixed(1);
+    }
+    function avg(arr){
+      if(!arr.length) return null;
+      return arr.reduce((a,b)=>a+b,0)/arr.length;
+    }
+    function sum(arr){
+      if(!arr.length) return null;
+      return arr.reduce((a,b)=>a+b,0);
+    }
 
-  // ================= Aggregation helpers =================
+    // ================= Aggregation helpers =================
 
-  function ymdParts(fechaStr) {
-    const parts = String(fechaStr).split("-");
-    const yy = parseInt(parts[0], 10);
-    const mm = parseInt(parts[1] ?? "1", 10);
-    const dd = parseInt(parts[2] ?? "1", 10);
-    return {yy, mm, dd};
-  }
+    function ymdParts(fechaStr) {
+      const parts = String(fechaStr).split("-");
+      const yy = parseInt(parts[0], 10);
+      const mm = parseInt(parts[1] ?? "1", 10);
+      const dd = parseInt(parts[2] ?? "1", 10);
+      return {yy, mm, dd};
+    }
 
-  function quincenaFromDay(dayNumber){
-    return (dayNumber <= 15) ? 1 : 2;
-  }
+    function quincenaFromDay(dayNumber){
+      return (dayNumber <= 15) ? 1 : 2;
+    }
 
-  function aggReducerInit() {
-    return {
-      count: 0,
-      lluvia_mm_sum: 0,
-      t_min_list: [],
-      t_max_list: [],
-      prod_sum: 0,
-      price_list: [],
-      origenes: new Set(),
-      sampleFecha: null,
-      sampleRegion: null,
-      sampleFruta: null
+    function aggReducerInit() {
+      return {
+        count: 0,
+        lluvia_mm_sum: 0,
+        t_min_list: [],
+        t_max_list: [],
+        prod_sum: 0,
+        price_list: [],
+        origenes: new Set(),
+        sampleFecha: null,
+        sampleRegion: null,
+        sampleFruta: null
+      };
+    }
+
+    function aggReducerAcc(acc, row){
+      acc.count += 1;
+
+      if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
+        acc.lluvia_mm_sum += Number(row.lluvia_mm);
+      }
+      if (row.t_min != null && !Number.isNaN(row.t_min)) {
+        acc.t_min_list.push(Number(row.t_min));
+      }
+      if (row.t_max != null && !Number.isNaN(row.t_max)) {
+        acc.t_max_list.push(Number(row.t_max));
+      }
+      if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
+        acc.prod_sum += Number(row.produccion_tn);
+      }
+      if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
+        acc.price_list.push(Number(row.precio_kg));
+      }
+      if (row.origen_fuente) {
+        acc.origenes.add(row.origen_fuente);
+      }
+
+      if (!acc.sampleFecha)  acc.sampleFecha  = row.fecha;
+      if (!acc.sampleRegion) acc.sampleRegion = row.region ?? null;
+      if (!acc.sampleFruta)  acc.sampleFruta  = row.fruta ?? null;
+
+      return acc;
+    }
+
+    function finalizeAggRecord(acc, meta){
+      const lluvia_mm = acc.lluvia_mm_sum || null;
+      const t_min = acc.t_min_list.length ? Math.min(...acc.t_min_list) : null;
+      const t_max = acc.t_max_list.length ? Math.max(...acc.t_max_list) : null;
+      const produccion_tn = acc.prod_sum || null;
+      const precio_kg = acc.price_list.length
+        ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
+        : null;
+
+      const origen_fuente = Array.from(acc.origenes).join(" + ") || null;
+
+      let fechaOut = acc.sampleFecha;
+      if (meta.type === "fortnight") {
+        const {yy,mm,quincena} = meta;
+        fechaOut = `${yy}-${String(mm).padStart(2,"0")}-Q${quincena}`;
+      } else if (meta.type === "month") {
+        const {yy,mm} = meta;
+        fechaOut = `${yy}-${String(mm).padStart(2,"0")}`;
+      }
+
+      return {
+        fecha: fechaOut,
+        region: acc.sampleRegion,
+        fruta: acc.sampleFruta,
+        lluvia_mm,
+        t_min,
+        t_max,
+        produccion_tn,
+        precio_kg,
+        origen_fuente
+      };
+    }
+
+    function aggregateData(data){
+      const mode = state.agg;
+      if (!data.length) return [];
+
+      const buckets = new Map();
+
+      for (const row of data){
+        if (!row.fecha) continue;
+        const {yy,mm,dd} = ymdParts(row.fecha);
+
+        let bucketKey;
+        let meta;
+
+        if (mode === "day"){
+          bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
+          meta = {type:"day", yy, mm, dd};
+        } else if (mode === "fortnight"){
+          const quin = quincenaFromDay(dd);
+          bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
+          meta = {type:"fortnight", yy, mm, quincena: quin};
+        } else {
+          bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
+          meta = {type:"month", yy, mm};
+        }
+
+        if (!buckets.has(bucketKey)){
+          buckets.set(bucketKey, { acc: aggReducerInit(), meta });
+        }
+        const bucket = buckets.get(bucketKey);
+        aggReducerAcc(bucket.acc, row);
+      }
+
+      const out = [];
+      for (const {acc, meta} of buckets.values()){
+        out.push(finalizeAggRecord(acc, meta));
+      }
+
+      out.sort((a,b)=>{
+        function parseKey(f){
+          let m = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
+          if (m) return {yy:+m[1], mm:+m[2], dd:0, q:+m[3]};
+          m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (m) return {yy:+m[1], mm:+m[2], dd:+m[3], q:0};
+          m = f.match(/^(\d{4})-(\d{2})$/);
+          if (m) return {yy:+m[1], mm:+m[2], dd:0, q:0};
+          return {yy:0,mm:0,dd:0,q:0};
+        }
+        const ak = parseKey(a.fecha);
+        const bk = parseKey(b.fecha);
+        if (ak.yy !== bk.yy) return ak.yy - bk.yy;
+        if (ak.mm !== bk.mm) return ak.mm - bk.mm;
+        if (ak.q  !== bk.q ) return ak.q  - bk.q;
+        if (ak.dd !== bk.dd) return ak.dd - bk.dd;
+        return 0;
+      });
+
+      return out;
+    }
+
+    // ================= State & DOM refs =================
+
+    let combinedRows = [];
+
+    const state = {
+      fruit: null,
+      region: null,
+      startDate: null,
+      endDate: null,
+      agg: "month",
+      filteredData: []
     };
-  }
 
-  function aggReducerAcc(acc, row){
-    acc.count += 1;
+    const fruitSelect       = document.getElementById("fruitSelect");
+    const regionSelect      = document.getElementById("regionSelect");
+    const startDateInput    = document.getElementById("startDate");
+    const endDateInput      = document.getElementById("endDate");
+    const aggSelect         = document.getElementById("aggSelect");
+    const applyFiltersBtn   = document.getElementById("applyFiltersBtn");
+    const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
+    const exportCsvBtn      = document.getElementById("exportCsvBtn");
 
-    if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
-      acc.lluvia_mm_sum += Number(row.lluvia_mm);
-    }
-    if (row.t_min != null && !Number.isNaN(row.t_min)) {
-      acc.t_min_list.push(Number(row.t_min));
-    }
-    if (row.t_max != null && !Number.isNaN(row.t_max)) {
-      acc.t_max_list.push(Number(row.t_max));
-    }
-    if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
-      acc.prod_sum += Number(row.produccion_tn);
-    }
-    if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
-      acc.price_list.push(Number(row.precio_kg));
-    }
-    if (row.origen_fuente) {
-      acc.origenes.add(row.origen_fuente);
-    }
+    const kpiTempMax        = document.getElementById("kpiTempMax");
+    const kpiTempMeta       = document.getElementById("kpiTempMeta");
+    const kpiProduction     = document.getElementById("kpiProduction");
+    const kpiProdMeta       = document.getElementById("kpiProdMeta");
+    const kpiPrice          = document.getElementById("kpiPrice");
+    const kpiPriceMeta      = document.getElementById("kpiPriceMeta");
 
-    if (!acc.sampleFecha)  acc.sampleFecha  = row.fecha;
-    if (!acc.sampleRegion) acc.sampleRegion = row.region ?? null;
-    if (!acc.sampleFruta)  acc.sampleFruta  = row.fruta ?? null;
+    const dataTableBody     = document.getElementById("dataTableBody");
 
-    return acc;
-  }
+    const tempCtx  = document.getElementById("tempChart").getContext("2d");
+    const prodCtx  = document.getElementById("prodChart").getContext("2d");
+    const priceCtx = document.getElementById("priceChart").getContext("2d");
 
-  function finalizeAggRecord(acc, meta){
-    const lluvia_mm = acc.lluvia_mm_sum || null;
-    const t_min = acc.t_min_list.length ? Math.min(...acc.t_min_list) : null;
-    const t_max = acc.t_max_list.length ? Math.max(...acc.t_max_list) : null;
-    const produccion_tn = acc.prod_sum || null;
-    const precio_kg = acc.price_list.length
-      ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
-      : null;
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const loadingTextEl  = document.getElementById("loadingText");
 
-    const origen_fuente = Array.from(acc.origenes).join(" + ") || null;
+    // ================= Loading UI =================
 
-    let fechaOut = acc.sampleFecha;
-    if (meta.type === "fortnight") {
-      const {yy,mm,quincena} = meta;
-      fechaOut = `${yy}-${String(mm).padStart(2,"0")}-Q${quincena}`;
-    } else if (meta.type === "month") {
-      const {yy,mm} = meta;
-      fechaOut = `${yy}-${String(mm).padStart(2,"0")}`;
-    }
-
-    return {
-      fecha: fechaOut,
-      region: acc.sampleRegion,
-      fruta: acc.sampleFruta,
-      lluvia_mm,
-      t_min,
-      t_max,
-      produccion_tn,
-      precio_kg,
-      origen_fuente
-    };
-  }
-
-  function aggregateData(data){
-    const mode = state.agg;
-    if (!data.length) return [];
-
-    const buckets = new Map();
-
-    for (const row of data){
-      if (!row.fecha) continue;
-      const {yy,mm,dd} = ymdParts(row.fecha);
-
-      let bucketKey;
-      let meta;
-
-      if (mode === "day"){
-        bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
-        meta = {type:"day", yy, mm, dd};
-      } else if (mode === "fortnight"){
-        const quin = quincenaFromDay(dd);
-        bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
-        meta = {type:"fortnight", yy, mm, quincena: quin};
+    function setLoading(isLoading, message){
+      if (message) loadingTextEl.textContent = message;
+      if (isLoading){
+        loadingOverlay.classList.remove("hidden");
       } else {
-        bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
-        meta = {type:"month", yy, mm};
+        loadingOverlay.classList.add("hidden");
       }
-
-      if (!buckets.has(bucketKey)){
-        buckets.set(bucketKey, { acc: aggReducerInit(), meta });
-      }
-      const bucket = buckets.get(bucketKey);
-      aggReducerAcc(bucket.acc, row);
+      [applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
+        if(!btn) return;
+        btn.disabled = !!isLoading;
+      });
     }
 
-    const out = [];
-    for (const {acc, meta} of buckets.values()){
-      out.push(finalizeAggRecord(acc, meta));
+    // ================= Backend integration =================
+
+    async function fetchBackendTable(){
+      console.log("[frontend] Llamando API:", API_URL);
+      const resp = await fetch(API_URL, { cache: "no-store" });
+      console.log("[frontend] Status:", resp.status);
+
+      if(!resp.ok){
+        throw new Error("Error al llamar al backend: " + resp.status);
+      }
+      const json = await resp.json();
+      console.log("[frontend] JSON crudo:", json);
+
+      const rows = Array.isArray(json.data)
+        ? json.data
+        : Array.isArray(json)
+          ? json
+          : [];
+
+      console.log("[frontend] Filas recibidas:", rows.length);
+
+      if (!rows.length){
+        return [];
+      }
+
+      const mapped = rows
+        .map(r => {
+          const mesAnio =
+            r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
+
+          const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
+
+          return {
+            fecha,
+            region: r.Departamento ?? r.departamento ?? r.region ?? null,
+            fruta: null,
+            lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
+            t_min: null,
+            t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
+            produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
+            precio_kg: null,
+            origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
+          };
+        })
+        .filter(r => r.fecha);
+
+      console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
+      return mapped;
     }
 
-    out.sort((a,b)=>{
-      function parseKey(f){
-        let m = f.match(/^(\d{4})-(\d{2})-Q(\d)$/);
-        if (m) return {yy:+m[1], mm:+m[2], dd:0, q:+m[3]};
-        m = f.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (m) return {yy:+m[1], mm:+m[2], dd:+m[3], q:0};
-        m = f.match(/^(\d{4})-(\d{2})$/);
-        if (m) return {yy:+m[1], mm:+m[2], dd:0, q:0};
-        return {yy:0,mm:0,dd:0,q:0};
+    async function loadData(){
+      try{
+        setLoading(true, "Cargando datos integrados desde el mediador...");
+        combinedRows = await fetchBackendTable();
+        window._debugRows = combinedRows;
+        initFilterControlsFromData();
+        renderAll();
+      }catch(e){
+        console.error(e);
+        dataTableBody.innerHTML = "";
+        const tr=document.createElement("tr");
+        const td=document.createElement("td");
+        td.colSpan=9;
+        td.textContent="Error al cargar datos desde el backend.";
+        tr.appendChild(td);
+        dataTableBody.appendChild(tr);
+      }finally{
+        setLoading(false);
       }
-      const ak = parseKey(a.fecha);
-      const bk = parseKey(b.fecha);
-      if (ak.yy !== bk.yy) return ak.yy - bk.yy;
-      if (ak.mm !== bk.mm) return ak.mm - bk.mm;
-      if (ak.q  !== bk.q ) return ak.q  - bk.q;
-      if (ak.dd !== bk.dd) return ak.dd - bk.dd;
-      return 0;
+    }
+
+    // ================= Rendering =================
+
+    function toDateStrict(s){
+      if (!s) return new Date(NaN);
+      const parts = s.split("-").map(Number);
+      if (parts.length === 3){
+        return new Date(parts[0], parts[1]-1, parts[2]);
+      }
+      if (parts.length === 2){
+        return new Date(parts[0], parts[1]-1, 1);
+      }
+      return new Date(NaN);
+    }
+
+    function applyFilters(){
+      const fFruit = state.fruit;
+      const fRegion = state.region;
+      const fStart = state.startDate ? toDateStrict(state.startDate) : null;
+      const fEnd   = state.endDate ? toDateStrict(state.endDate)   : null;
+
+      let out = combinedRows.filter(r=>{
+        if (fFruit && r.fruta !== fFruit) return false;
+        if (fRegion && r.region !== fRegion) return false;
+        const d = toDateStrict(r.fecha);
+        if (fStart && d < fStart) return false;
+        if (fEnd && d > fEnd) return false;
+        return true;
+      });
+
+      state.filteredData = aggregateData(out);
+    }
+
+    const aggLabelEs = { day:"Día", fortnight:"Quincena", month:"Mes" };
+
+    function renderKPIs(){
+      const d = state.filteredData;
+      if (!d.length){
+        kpiTempMax.textContent = "--"; kpiTempMeta.textContent = "Sin datos en rango";
+        kpiProduction.textContent = "--"; kpiProdMeta.textContent = "Sin datos en rango";
+        kpiPrice.textContent = "--"; kpiPriceMeta.textContent = "Sin datos en rango";
+        return;
+      }
+
+      const avgTmax   = avg(d.filter(r=>r.t_max!=null).map(r=>r.t_max));
+      const totalProd = sum(d.filter(r=>r.produccion_tn!=null).map(r=>r.produccion_tn));
+      const avgPrice  = avg(d.filter(r=>r.precio_kg!=null).map(r=>r.precio_kg));
+      const aggTxt = aggLabelEs[state.agg] || "";
+
+      kpiTempMax.textContent   = fmt1(avgTmax);
+      kpiTempMeta.textContent  = `Promedio ${aggTxt}`;
+
+      kpiProduction.textContent = totalProd ?? "--";
+      kpiProdMeta.textContent   = `Suma ${aggTxt}`;
+
+      kpiPrice.textContent     = fmt1(avgPrice);
+      kpiPriceMeta.textContent = `Promedio ${aggTxt}`;
+    }
+
+    function renderTable(){
+      dataTableBody.innerHTML = "";
+
+      if (!state.filteredData.length){
+        const tr=document.createElement("tr");
+        const td=document.createElement("td");
+        td.colSpan=9;
+        td.textContent="Sin datos para los filtros seleccionados.";
+        tr.appendChild(td);
+        dataTableBody.appendChild(tr);
+        return;
+      }
+
+      state.filteredData.forEach(row=>{
+        const tr=document.createElement("tr");
+        const cells=[
+          formatDateEs(row.fecha),
+          row.region ?? "",
+          row.fruta ?? "",
+          row.lluvia_mm ?? "",
+          row.t_min ?? "",
+          row.t_max ?? "",
+          row.produccion_tn ?? "",
+          row.precio_kg ?? "",
+          row.origen_fuente ?? ""
+        ];
+        cells.forEach(v=>{
+          const td=document.createElement("td");
+          td.textContent=v;
+          tr.appendChild(td);
+        });
+        dataTableBody.appendChild(tr);
+      });
+    }
+
+    function drawLineChart(ctx,data,xKey,yKey){
+      const w=ctx.canvas.width,h=ctx.canvas.height;
+      ctx.clearRect(0,0,w,h);
+
+      const bg="#1e2538",axis="rgba(255,255,255,0.3)",line="#38bdf8",
+            text="rgba(255,255,255,0.7)",grid="rgba(255,255,255,0.07)";
+
+      ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+
+      if(!data.length){
+        ctx.fillStyle=text;
+        ctx.font="14px system-ui,sans-serif";
+        ctx.fillText("Sin datos",10,20);
+        return;
+      }
+
+      const mLeft=50,mRight=20,mTop=20,mBottom=30;
+      const plotW=w-mLeft-mRight,plotH=h-mTop-mBottom;
+
+      const xVals=data.map(d=>d[xKey]);
+      const yVals=data.map(d=>Number(d[yKey])).filter(v=>!Number.isNaN(v));
+      if (!yVals.length){
+        ctx.fillStyle=text;
+        ctx.font="14px system-ui,sans-serif";
+        ctx.fillText("Sin datos",10,20);
+        return;
+      }
+
+      const yMin=Math.min(...yVals), yMax=Math.max(...yVals);
+      const yRange=(yMax-yMin)||1;
+      const niceMin=yMin-yRange*0.1;
+      const niceMax=yMax+yRange*0.1;
+
+      const xScale=i=>xVals.length===1? mLeft+plotW/2 : mLeft+(i/(xVals.length-1))*plotW;
+      const yScale=v=>{
+        const t=(v-niceMin)/(niceMax-niceMin);
+        return mTop+(1-t)*plotH;
+      };
+
+      ctx.strokeStyle=grid;
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      for(let g=0;g<=4;g++){
+        const yy=mTop+(g/4)*plotH;
+        ctx.moveTo(mLeft,yy);
+        ctx.lineTo(mLeft+plotW,yy);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle=axis;
+      ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(mLeft,mTop);
+      ctx.lineTo(mLeft,mTop+plotH);
+      ctx.moveTo(mLeft,mTop+plotH);
+      ctx.lineTo(mLeft+plotW,mTop+plotH);
+      ctx.stroke();
+
+      ctx.fillStyle=text;
+      ctx.font="12px system-ui,sans-serif";
+      ctx.textAlign="right";
+      ctx.textBaseline="middle";
+      for(let g=0;g<=4;g++){
+        const val=niceMax-(g/4)*(niceMax-niceMin);
+        const yy=mTop+(g/4)*plotH;
+        ctx.fillText(val.toFixed(1),mLeft-6,yy);
+      }
+
+      ctx.textAlign="center";
+      ctx.textBaseline="top";
+      xVals.forEach((xv,i)=>{
+        const xx=xScale(i);
+        ctx.fillText(formatDateShortEs(xv),xx,mTop+plotH+6);
+      });
+
+      ctx.strokeStyle=line;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      data.forEach((row,i)=>{
+        const xx=xScale(i);
+        const yy=yScale(Number(row[yKey]));
+        if (i===0) ctx.moveTo(xx,yy);
+        else ctx.lineTo(xx,yy);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle=line;
+      data.forEach((row,i)=>{
+        const xx=xScale(i);
+        const yy=yScale(Number(row[yKey]));
+        ctx.beginPath();
+        ctx.arc(xx,yy,3,0,Math.PI*2);
+        ctx.fill();
+      });
+    }
+
+    function renderCharts(){
+      drawLineChart(
+        tempCtx,
+        state.filteredData.filter(r=>r.t_max!=null),
+        "fecha",
+        "t_max"
+      );
+      drawLineChart(
+        prodCtx,
+        state.filteredData.filter(r=>r.produccion_tn!=null),
+        "fecha",
+        "produccion_tn"
+      );
+      drawLineChart(
+        priceCtx,
+        state.filteredData.filter(r=>r.precio_kg!=null),
+        "fecha",
+        "precio_kg"
+      );
+    }
+
+    function renderAll(){
+      applyFilters();
+      renderKPIs();
+      renderTable();
+      renderCharts();
+    }
+
+    function initFilterControlsFromData(){
+      const fruits=[...new Set(combinedRows.map(r=>r.fruta).filter(Boolean))].sort();
+      fruitSelect.innerHTML =
+        '<option value="">(todas)</option>' +
+        fruits.map(f=>`<option value="${f}">${f}</option>`).join("");
+
+      const regions=[...new Set(combinedRows.map(r=>r.region).filter(Boolean))].sort();
+      regionSelect.innerHTML =
+        '<option value="">(todas)</option>' +
+        regions.map(z=>`<option value="${z}">${z}</option>`).join("");
+
+      const dates = combinedRows.map(r=>r.fecha).sort();
+      const minDate = dates[0];
+      const maxDate = dates[dates.length-1];
+
+      startDateInput.value = minDate && minDate.length===7 ? `${minDate}-01` : (minDate || "");
+      endDateInput.value   = maxDate && maxDate.length===7 ? `${maxDate}-01` : (maxDate || "");
+
+      state.fruit     = "";
+      state.region    = "";
+      state.startDate = minDate || "";
+      state.endDate   = maxDate || "";
+      state.agg       = aggSelect.value;
+    }
+
+    // ================= Events =================
+
+    applyFiltersBtn.addEventListener("click", ()=>{
+      state.fruit     = fruitSelect.value;
+      state.region    = regionSelect.value;
+      state.startDate = startDateInput.value || state.startDate;
+      state.endDate   = endDateInput.value   || state.endDate;
+      state.agg       = aggSelect.value;
+      renderAll();
     });
 
-    return out;
-  }
-
-  // ================= State & DOM refs =================
-
-  let combinedRows = [];
-
-  const state = {
-    fruit: null,
-    region: null,
-    startDate: null,
-    endDate: null,
-    agg: "month",
-    filteredData: []
-  };
-
-  const fruitSelect       = document.getElementById("fruitSelect");
-  const regionSelect      = document.getElementById("regionSelect");
-  const startDateInput    = document.getElementById("startDate");
-  const endDateInput      = document.getElementById("endDate");
-  const aggSelect         = document.getElementById("aggSelect");
-  const applyFiltersBtn   = document.getElementById("applyFiltersBtn");
-  const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
-  const exportCsvBtn      = document.getElementById("exportCsvBtn");
-
-  const kpiTempMax        = document.getElementById("kpiTempMax");
-  const kpiTempMeta       = document.getElementById("kpiTempMeta");
-  const kpiProduction     = document.getElementById("kpiProduction");
-  const kpiProdMeta       = document.getElementById("kpiProdMeta");
-  const kpiPrice          = document.getElementById("kpiPrice");
-  const kpiPriceMeta      = document.getElementById("kpiPriceMeta");
-
-  const dataTableBody     = document.getElementById("dataTableBody");
-
-  const tempCtx  = document.getElementById("tempChart").getContext("2d");
-  const prodCtx  = document.getElementById("prodChart").getContext("2d");
-  const priceCtx = document.getElementById("priceChart").getContext("2d");
-
-  const loadingOverlay = document.getElementById("loadingOverlay");
-  const loadingTextEl  = document.getElementById("loadingText");
-
-  // ================= Loading UI =================
-
-  function setLoading(isLoading, message){
-    if (message) loadingTextEl.textContent = message;
-    if (isLoading){
-      loadingOverlay.classList.remove("hidden");
-    } else {
-      loadingOverlay.classList.add("hidden");
-    }
-    [applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
-      if(!btn) return;
-      btn.disabled = !!isLoading;
-    });
-  }
-
-  // ================= Backend integration =================
-
-  async function fetchBackendTable(){
-    console.log("[frontend] Llamando API:", API_URL);
-    const resp = await fetch(API_URL, { cache: "no-store" });
-    console.log("[frontend] Status:", resp.status);
-
-    if(!resp.ok){
-      throw new Error("Error al llamar al backend: " + resp.status);
-    }
-    const json = await resp.json();
-    console.log("[frontend] JSON crudo:", json);
-
-    const rows = Array.isArray(json.data)
-      ? json.data
-      : Array.isArray(json)
-        ? json
-        : [];
-
-    console.log("[frontend] Filas recibidas:", rows.length);
-
-    if (!rows.length){
-      return [];
-    }
-
-    const mapped = rows
-      .map(r => {
-        const mesAnio =
-          r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
-
-        const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
-
-        return {
-          fecha,
-          region: r.Departamento ?? r.departamento ?? r.region ?? null,
-          fruta: null,
-          lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
-          t_min: null,
-          t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
-          produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
-          precio_kg: null,
-          origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
-        };
-      })
-      .filter(r => r.fecha);
-
-    console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
-    return mapped;
-  }
-
-  async function loadData(){
-    try{
-      setLoading(true, "Cargando datos integrados desde el mediador...");
-      combinedRows = await fetchBackendTable();
-      window._debugRows = combinedRows;
+    resetFiltersBtn.addEventListener("click", ()=>{
       initFilterControlsFromData();
       renderAll();
-    }catch(e){
-      console.error(e);
-      dataTableBody.innerHTML = "";
-      const tr=document.createElement("tr");
-      const td=document.createElement("td");
-      td.colSpan=9;
-      td.textContent="Error al cargar datos desde el backend.";
-      tr.appendChild(td);
-      dataTableBody.appendChild(tr);
-    }finally{
-      setLoading(false);
-    }
-  }
-
-  // ================= Rendering =================
-
-  function toDateStrict(s){
-    if (!s) return new Date(NaN);
-    const parts = s.split("-").map(Number);
-    if (parts.length === 3){
-      return new Date(parts[0], parts[1]-1, parts[2]);
-    }
-    if (parts.length === 2){
-      return new Date(parts[0], parts[1]-1, 1);
-    }
-    return new Date(NaN);
-  }
-
-  function applyFilters(){
-    const fFruit = state.fruit;
-    const fRegion = state.region;
-    const fStart = state.startDate ? toDateStrict(state.startDate) : null;
-    const fEnd   = state.endDate ? toDateStrict(state.endDate)   : null;
-
-    let out = combinedRows.filter(r=>{
-      if (fFruit && r.fruta !== fFruit) return false;
-      if (fRegion && r.region !== fRegion) return false;
-      const d = toDateStrict(r.fecha);
-      if (fStart && d < fStart) return false;
-      if (fEnd && d > fEnd) return false;
-      return true;
     });
 
-    state.filteredData = aggregateData(out);
-  }
-
-  const aggLabelEs = { day:"Día", fortnight:"Quincena", month:"Mes" };
-
-  function renderKPIs(){
-    const d = state.filteredData;
-    if (!d.length){
-      kpiTempMax.textContent = "--"; kpiTempMeta.textContent = "Sin datos en rango";
-      kpiProduction.textContent = "--"; kpiProdMeta.textContent = "Sin datos en rango";
-      kpiPrice.textContent = "--"; kpiPriceMeta.textContent = "Sin datos en rango";
-      return;
-    }
-
-    const avgTmax   = avg(d.filter(r=>r.t_max!=null).map(r=>r.t_max));
-    const totalProd = sum(d.filter(r=>r.produccion_tn!=null).map(r=>r.produccion_tn));
-    const avgPrice  = avg(d.filter(r=>r.precio_kg!=null).map(r=>r.precio_kg));
-    const aggTxt = aggLabelEs[state.agg] || "";
-
-    kpiTempMax.textContent   = fmt1(avgTmax);
-    kpiTempMeta.textContent  = `Promedio ${aggTxt}`;
-
-    kpiProduction.textContent = totalProd ?? "--";
-    kpiProdMeta.textContent   = `Suma ${aggTxt}`;
-
-    kpiPrice.textContent     = fmt1(avgPrice);
-    kpiPriceMeta.textContent = `Promedio ${aggTxt}`;
-  }
-
-  function renderTable(){
-    dataTableBody.innerHTML = "";
-
-    if (!state.filteredData.length){
-      const tr=document.createElement("tr");
-      const td=document.createElement("td");
-      td.colSpan=9;
-      td.textContent="Sin datos para los filtros seleccionados.";
-      tr.appendChild(td);
-      dataTableBody.appendChild(tr);
-      return;
-    }
-
-    state.filteredData.forEach(row=>{
-      const tr=document.createElement("tr");
-      const cells=[
-        formatDateEs(row.fecha),
-        row.region ?? "",
-        row.fruta ?? "",
-        row.lluvia_mm ?? "",
-        row.t_min ?? "",
-        row.t_max ?? "",
-        row.produccion_tn ?? "",
-        row.precio_kg ?? "",
-        row.origen_fuente ?? ""
+    exportCsvBtn.addEventListener("click", ()=>{
+      if(!state.filteredData.length){
+        alert("No hay datos para exportar.");
+        return;
+      }
+      const headers=[
+        "fecha","region","fruta",
+        "lluvia_mm","t_min","t_max",
+        "produccion_tn","precio_kg",
+        "origen_fuente"
       ];
-      cells.forEach(v=>{
-        const td=document.createElement("td");
-        td.textContent=v;
-        tr.appendChild(td);
-      });
-      dataTableBody.appendChild(tr);
-    });
-  }
+      const csv=[
+        headers.join(","),
+        ...state.filteredData.map(r=>headers.map(h=>r[h]??"").join(","))
+      ].join("\n");
 
-  function drawLineChart(ctx,data,xKey,yKey){
-    const w=ctx.canvas.width,h=ctx.canvas.height;
-    ctx.clearRect(0,0,w,h);
-
-    const bg="#1e2538",axis="rgba(255,255,255,0.3)",line="#38bdf8",
-          text="rgba(255,255,255,0.7)",grid="rgba(255,255,255,0.07)";
-
-    ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
-
-    if(!data.length){
-      ctx.fillStyle=text;
-      ctx.font="14px system-ui,sans-serif";
-      ctx.fillText("Sin datos",10,20);
-      return;
-    }
-
-    const mLeft=50,mRight=20,mTop=20,mBottom=30;
-    const plotW=w-mLeft-mRight,plotH=h-mTop-mBottom;
-
-    const xVals=data.map(d=>d[xKey]);
-    const yVals=data.map(d=>Number(d[yKey])).filter(v=>!Number.isNaN(v));
-    if (!yVals.length){
-      ctx.fillStyle=text;
-      ctx.font="14px system-ui,sans-serif";
-      ctx.fillText("Sin datos",10,20);
-      return;
-    }
-
-    const yMin=Math.min(...yVals), yMax=Math.max(...yVals);
-    const yRange=(yMax-yMin)||1;
-    const niceMin=yMin-yRange*0.1;
-    const niceMax=yMax+yRange*0.1;
-
-    const xScale=i=>xVals.length===1? mLeft+plotW/2 : mLeft+(i/(xVals.length-1))*plotW;
-    const yScale=v=>{
-      const t=(v-niceMin)/(niceMax-niceMin);
-      return mTop+(1-t)*plotH;
-    };
-
-    ctx.strokeStyle=grid;
-    ctx.lineWidth=1;
-    ctx.beginPath();
-    for(let g=0;g<=4;g++){
-      const yy=mTop+(g/4)*plotH;
-      ctx.moveTo(mLeft,yy);
-      ctx.lineTo(mLeft+plotW,yy);
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle=axis;
-    ctx.lineWidth=1.5;
-    ctx.beginPath();
-    ctx.moveTo(mLeft,mTop);
-    ctx.lineTo(mLeft,mTop+plotH);
-    ctx.moveTo(mLeft,mTop+plotH);
-    ctx.lineTo(mLeft+plotW,mTop+plotH);
-    ctx.stroke();
-
-    ctx.fillStyle=text;
-    ctx.font="12px system-ui,sans-serif";
-    ctx.textAlign="right";
-    ctx.textBaseline="middle";
-    for(let g=0;g<=4;g++){
-      const val=niceMax-(g/4)*(niceMax-niceMin);
-      const yy=mTop+(g/4)*plotH;
-      ctx.fillText(val.toFixed(1),mLeft-6,yy);
-    }
-
-    ctx.textAlign="center";
-    ctx.textBaseline="top";
-    xVals.forEach((xv,i)=>{
-      const xx=xScale(i);
-      ctx.fillText(formatDateShortEs(xv),xx,mTop+plotH+6);
+      const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;
+      a.download="export_mgap.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     });
 
-    ctx.strokeStyle=line;
-    ctx.lineWidth=2;
-    ctx.beginPath();
-    data.forEach((row,i)=>{
-      const xx=xScale(i);
-      const yy=yScale(Number(row[yKey]));
-      if (i===0) ctx.moveTo(xx,yy);
-      else ctx.lineTo(xx,yy);
-    });
-    ctx.stroke();
+    // ================= Boot (con guardia adicional) =================
 
-    ctx.fillStyle=line;
-    data.forEach((row,i)=>{
-      const xx=xScale(i);
-      const yy=yScale(Number(row[yKey]));
-      ctx.beginPath();
-      ctx.arc(xx,yy,3,0,Math.PI*2);
-      ctx.fill();
-    });
-  }
-
-  function renderCharts(){
-    drawLineChart(
-      tempCtx,
-      state.filteredData.filter(r=>r.t_max!=null),
-      "fecha",
-      "t_max"
-    );
-    drawLineChart(
-      prodCtx,
-      state.filteredData.filter(r=>r.produccion_tn!=null),
-      "fecha",
-      "produccion_tn"
-    );
-    drawLineChart(
-      priceCtx,
-      state.filteredData.filter(r=>r.precio_kg!=null),
-      "fecha",
-      "precio_kg"
-    );
-  }
-
-  function renderAll(){
-    applyFilters();
-    renderKPIs();
-    renderTable();
-    renderCharts();
-  }
-
-  function initFilterControlsFromData(){
-    const fruits=[...new Set(combinedRows.map(r=>r.fruta).filter(Boolean))].sort();
-    fruitSelect.innerHTML =
-      '<option value="">(todas)</option>' +
-      fruits.map(f=>`<option value="${f}">${f}</option>`).join("");
-
-    const regions=[...new Set(combinedRows.map(r=>r.region).filter(Boolean))].sort();
-    regionSelect.innerHTML =
-      '<option value="">(todas)</option>' +
-      regions.map(z=>`<option value="${z}">${z}</option>`).join("");
-
-    const dates = combinedRows.map(r=>r.fecha).sort();
-    const minDate = dates[0];
-    const maxDate = dates[dates.length-1];
-
-    startDateInput.value = minDate && minDate.length===7 ? `${minDate}-01` : (minDate || "");
-    endDateInput.value   = maxDate && maxDate.length===7 ? `${maxDate}-01` : (maxDate || "");
-
-    state.fruit     = "";
-    state.region    = "";
-    state.startDate = minDate || "";
-    state.endDate   = maxDate || "";
-    state.agg       = aggSelect.value;
-  }
-
-  // ================= Events =================
-
-  applyFiltersBtn.addEventListener("click", ()=>{
-    state.fruit     = fruitSelect.value;
-    state.region    = regionSelect.value;
-    state.startDate = startDateInput.value || state.startDate;
-    state.endDate   = endDateInput.value   || state.endDate;
-    state.agg       = aggSelect.value;
-    renderAll();
-  });
-
-  resetFiltersBtn.addEventListener("click", ()=>{
-    initFilterControlsFromData();
-    renderAll();
-  });
-
-  exportCsvBtn.addEventListener("click", ()=>{
-    if(!state.filteredData.length){
-      alert("No hay datos para exportar.");
-      return;
+    let dataLoaded = false;
+    async function loadDataOnce(){
+      if (dataLoaded){
+        console.log("[frontend] Datos ya cargados, se omite nueva llamada");
+        return;
+      }
+      dataLoaded = true;
+      await loadData();
     }
-    const headers=[
-      "fecha","region","fruta",
-      "lluvia_mm","t_min","t_max",
-      "produccion_tn","precio_kg",
-      "origen_fuente"
-    ];
-    const csv=[
-      headers.join(","),
-      ...state.filteredData.map(r=>headers.map(h=>r[h]??"").join(","))
-    ].join("\n");
 
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download="export_mgap.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
-
-  // ================= Boot =================
-
-  (async function boot(){
-    await loadData();
-  })();
+    (async function boot(){
+      await loadDataOnce();
+    })();
+  }
 </script>
 
 </body>
