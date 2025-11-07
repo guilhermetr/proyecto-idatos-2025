@@ -147,11 +147,6 @@
       background:transparent;
       border-color:var(--border-color)
     }
-    .btn-ghost{
-      background:transparent;
-      border-color:transparent;
-      color:var(--text-dim)
-    }
     .btn-block{width:100%}
     .btn:focus{
       outline:0;
@@ -332,48 +327,50 @@
 
   <div class="layout">
     <aside class="sidebar">
-  <section class="filter-block">
-    <h2 class="filter-block__title">Filtros</h2>
+      <section class="filter-block">
+        <h2 class="filter-block__title">Filtros</h2>
 
-    <label class="form-field">
-      <span class="form-label">Región / zona</span>
-      <select id="regionSelect" class="form-input"></select>
-    </label>
+        <label class="form-field">
+          <span class="form-label">Región / zona</span>
+          <select id="regionSelect" class="form-input"></select>
+        </label>
 
-    <div class="form-field form-field--row">
-      <div>
-        <span class="form-label">Desde</span>
-        <input type="date" id="startDate" class="form-input" />
-      </div>
-      <div>
-        <span class="form-label">Hasta</span>
-        <input type="date" id="endDate" class="form-input" />
-      </div>
-    </div>
+        <div class="form-field form-field--row">
+          <div>
+            <span class="form-label">Desde</span>
+            <input type="date" id="startDate" class="form-input" />
+          </div>
+          <div>
+            <span class="form-label">Hasta</span>
+            <input type="date" id="endDate" class="form-input" />
+          </div>
+        </div>
 
-    <label class="form-field">
-      <span class="form-label">Agregación temporal</span>
-      <select id="aggSelect" class="form-input">
-        <option value="month" selected>Mes</option>
-        <option value="year">Año</option>
-      </select>
-    </label>
+        <label class="form-field">
+          <span class="form-label">Agregación temporal</span>
+          <select id="aggSelect" class="form-input">
+            <option value="month" selected>Mes</option>
+            <option value="year">Año</option>
+          </select>
+        </label>
 
-    <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
-    <button id="toggleCompleteBtn" class="btn btn-ghost btn-block" style="margin-top:0.5rem;">
-      Solo filas completas
-    </button>
-  </section>
+        <!-- Checkbox Solo filas completas -->
+        <label class="form-field" style="flex-direction:row;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+          <input type="checkbox" id="onlyCompleteCheckbox" />
+          <span class="form-label" style="margin-bottom:0;">Mostrar solo filas completas</span>
+        </label>
 
-  <section class="meta-block">
-    <h2 class="filter-block__title">Notas metodológicas</h2>
-    <ul class="meta-list">
-      <li>La función serverless integra clima, producción y precios en tiempo de consulta.</li>
-      <li>La vista está agregada por Mes/Año y Departamento. Fruta fija: Manzana.</li>
-    </ul>
-  </section>
-</aside>
+        <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
+      </section>
 
+      <section class="meta-block">
+        <h2 class="filter-block__title">Notas metodológicas</h2>
+        <ul class="meta-list">
+          <li>La función serverless integra clima, producción y precios en tiempo de consulta.</li>
+          <li>La vista está agregada por Mes/Año y Departamento. Fruta fija: Manzana.</li>
+        </ul>
+      </section>
+    </aside>
 
     <main class="main">
       <section class="cards-row" aria-label="Indicadores resumidos">
@@ -502,6 +499,24 @@
       return arr.reduce((a,b)=>a+b,0);
     }
 
+    function getFuenteLabel(row){
+      const sources = [];
+      if (
+        (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) ||
+        (row.temp_c    != null && !Number.isNaN(row.temp_c))    ||
+        (row.hum_pje   != null && !Number.isNaN(row.hum_pje))
+      ){
+        sources.push("INUMET");
+      }
+      if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)){
+        sources.push("UAM");
+      }
+      if (row.precio_kg != null && !Number.isNaN(row.precio_kg)){
+        sources.push("MEF");
+      }
+      return sources.join(" · ");
+    }
+
     // ================= Aggregation helpers =================
 
     function ymdParts(fechaStr) {
@@ -588,7 +603,7 @@
     }
 
     function aggregateData(data){
-      const mode = state.agg; // "month" | "year"
+      const mode = state.agg;
       if (!data.length) return [];
 
       const buckets = new Map();
@@ -602,7 +617,7 @@
         if (mode === "year"){
           key  = ["year", yy, regionKey].join("|");
           meta = {type:"year", yy};
-        } else { // month
+        } else {
           key  = ["month", yy, mm, regionKey].join("|");
           meta = {type:"month", yy, mm};
         }
@@ -650,7 +665,7 @@
     const endDateInput        = document.getElementById("endDate");
     const aggSelect           = document.getElementById("aggSelect");
     const applyFiltersBtn     = document.getElementById("applyFiltersBtn");
-    const toggleCompleteBtn   = document.getElementById("toggleCompleteBtn");
+    const onlyCompleteCheckbox= document.getElementById("onlyCompleteCheckbox");
     const exportCsvBtn        = document.getElementById("exportCsvBtn");
 
     const kpiTemp             = document.getElementById("kpiTemp");
@@ -674,9 +689,9 @@
       } else {
         loadingOverlay.classList.add("hidden");
       }
-      [applyFiltersBtn, toggleCompleteBtn, exportCsvBtn].forEach(btn=>{
-        if(!btn) return;
-        btn.disabled = !!isLoading;
+      [applyFiltersBtn, onlyCompleteCheckbox, exportCsvBtn].forEach(el=>{
+        if(!el) return;
+        el.disabled = !!isLoading;
       });
     }
 
@@ -732,7 +747,7 @@
             hum_pje,
             produccion_tn,
             precio_kg,
-            origen_fuente: r.origen_fuente || "INUMET_temperatura, INUMET_humedad, INUMET_precipitaciones, UAM_produccion, MEF_precios"
+            origen_fuente: r.origen_fuente || ""
           };
         })
         .filter(r => r.fecha && r.region);
@@ -856,7 +871,7 @@
           row.hum_pje != null      ? fmt1(row.hum_pje)        : "",
           row.produccion_tn != null? fmt1(row.produccion_tn)  : "",
           row.precio_kg != null    ? fmt1(row.precio_kg)      : "",
-          getFuenteLabel(row)      // nuevo cálculo dinámico
+          getFuenteLabel(row)
         ];
         cells.forEach(v=>{
           const td=document.createElement("td");
@@ -865,20 +880,6 @@
         });
         dataTableBody.appendChild(tr);
       });
-    }
-
-
-    function updateCompleteButton(){
-      if (!toggleCompleteBtn) return;
-      if (state.onlyComplete){
-        toggleCompleteBtn.classList.add("btn-primary");
-        toggleCompleteBtn.classList.remove("btn-ghost");
-        toggleCompleteBtn.textContent = "Ver todas las filas";
-      } else {
-        toggleCompleteBtn.classList.remove("btn-primary");
-        toggleCompleteBtn.classList.add("btn-ghost");
-        toggleCompleteBtn.textContent = "Solo filas completas";
-      }
     }
 
     function renderAll(){
@@ -905,28 +906,9 @@
       state.endDate       = maxDate || "";
       state.agg           = aggSelect.value;
       state.onlyComplete  = false;
-      updateCompleteButton();
-    }
-
-    function getFuenteLabel(row){
-      const sources = [];
-      // INUMET: si hay al menos un dato climático
-      if (
-        (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) ||
-        (row.temp_c    != null && !Number.isNaN(row.temp_c))    ||
-        (row.hum_pje   != null && !Number.isNaN(row.hum_pje))
-      ){
-        sources.push("INUMET");
+      if (onlyCompleteCheckbox){
+        onlyCompleteCheckbox.checked = false;
       }
-      // UAM: si hay producción
-      if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)){
-        sources.push("UAM");
-      }
-      // MEF: si hay precio
-      if (row.precio_kg != null && !Number.isNaN(row.precio_kg)){
-        sources.push("MEF");
-      }
-      return sources.join(" · ");
     }
 
     // ================= Events =================
@@ -939,11 +921,12 @@
       renderAll();
     });
 
-    toggleCompleteBtn.addEventListener("click", ()=>{
-      state.onlyComplete = !state.onlyComplete;
-      updateCompleteButton();
-      renderAll();
-    });
+    if (onlyCompleteCheckbox){
+      onlyCompleteCheckbox.addEventListener("change", ()=>{
+        state.onlyComplete = !!onlyCompleteCheckbox.checked;
+        renderAll();
+      });
+    }
 
     exportCsvBtn.addEventListener("click", ()=>{
       if(!state.filteredData.length){
