@@ -1,5 +1,5 @@
 # /api/main.py
-
+import math
 import os
 import json
 import time
@@ -426,6 +426,41 @@ def mediador():
 # 4. Helper JSON
 # ---------------------------------------------------------------------------
 
+def sanitize_for_json(obj):
+    """
+    Recorre dicts/listas y convierte NaN/Inf en None para producir JSON válido.
+    """
+    if isinstance(obj, float):
+        if math.isfinite(obj):
+            return obj
+        return None
+
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(v) for v in obj]
+
+    return obj
+
+
+def dataframe_to_json_records(df: pd.DataFrame):
+    if df is None or df.empty:
+        return []
+
+    df = df.copy()
+
+    # Period -> string (por ejemplo Mes_año)
+    if "Mes_año" in df.columns:
+        df["Mes_año"] = df["Mes_año"].astype(str)
+
+    # NaN -> None a nivel de DataFrame
+    df = df.where(pd.notnull(df), None)
+
+    records = df.to_dict(orient="records")
+    # Saneo final por si queda algún float especial
+    return sanitize_for_json(records)
+
 def dataframe_to_json_records(df: pd.DataFrame):
     if df is None or df.empty:
         return []
@@ -452,7 +487,13 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def _send_json(self, status_code: int, payload: dict):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        safe_payload = sanitize_for_json(payload)
+        body = json.dumps(
+            safe_payload,
+            ensure_ascii=False,
+            allow_nan=False 
+        ).encode("utf-8")
+
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
