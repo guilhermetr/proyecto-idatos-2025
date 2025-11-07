@@ -360,8 +360,8 @@
 
   </style>
 </head>
-  <body>
-    <div id="loadingOverlay" class="loading-overlay hidden">
+<body>
+  <div id="loadingOverlay" class="loading-overlay hidden">
     <div class="loading-spinner"></div>
     <div id="loadingText">Cargando datos integrados desde las fuentes...</div>
   </div>
@@ -372,7 +372,6 @@
       <p class="subtitle">Clima (INUMET), Producción (INIA / INE), Precios (consumidor)</p>
     </div>
     <div class="app-header__global-controls">
-      <button id="refreshDataBtn" class="btn btn-outline">Actualizar desde las fuentes</button>
       <button id="exportCsvBtn" class="btn btn-outline">Descargar CSV</button>
       <button id="resetFiltersBtn" class="btn btn-ghost">Reiniciar filtros</button>
     </div>
@@ -420,7 +419,7 @@
         <h2 class="filter-block__title">Notas metodológicas</h2>
         <ul class="meta-list">
           <li>Los datos se consultan a través de una función serverless que descarga y normaliza las fuentes públicas.</li>
-          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos datos integrados bajo demanda.</li>          
+          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos datos integrados bajo demanda.</li>
         </ul>
       </section>
     </aside>
@@ -537,20 +536,16 @@
     if(!raw) return null;
     let s = String(raw).trim();
 
-    // "YYYY-MM-DD HH:MM" -> "YYYY-MM-DD"
     if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
       s = s.split(" ")[0];
     }
 
-    // "YYYY-MM-DD" or "YYYY/MM/DD"
     let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
     if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
-    // "DD/MM/YYYY" or "DD-MM-YYYY"
     m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
     if (m) return `${m[3]}-${m[2]}-${m[1]}`;
 
-    // "YYYY-MM" (mensual)
     m = s.match(/^(\d{4})-(\d{2})$/);
     if (m) return `${m[1]}-${m[2]}`;
 
@@ -772,7 +767,6 @@
   const aggSelect         = document.getElementById("aggSelect");
   const applyFiltersBtn   = document.getElementById("applyFiltersBtn");
   const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
-  const refreshDataBtn    = document.getElementById("refreshDataBtn");
   const exportCsvBtn      = document.getElementById("exportCsvBtn");
 
   const kpiTempMax        = document.getElementById("kpiTempMax");
@@ -800,7 +794,7 @@
     } else {
       loadingOverlay.classList.add("hidden");
     }
-    [refreshDataBtn, applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
+    [applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
       if(!btn) return;
       btn.disabled = !!isLoading;
     });
@@ -834,11 +828,7 @@
     const mapped = rows
       .map(r => {
         const mesAnio =
-          r["Mes_año"] ??
-          r.Mes_año ??
-          r.mes_año ??
-          r.mes_ano ??
-          null;
+          r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
 
         const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
 
@@ -864,7 +854,7 @@
     try{
       setLoading(true, "Cargando datos integrados desde el mediador...");
       combinedRows = await fetchBackendTable();
-      window._debugRows = combinedRows; // para inspeccionar en consola
+      window._debugRows = combinedRows;
       initFilterControlsFromData();
       renderAll();
     }catch(e){
@@ -1164,10 +1154,6 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  });
-
-  refreshDataBtn.addEventListener("click", async ()=>{
-    await loadData();
   });
 
   // ================= Boot =================
