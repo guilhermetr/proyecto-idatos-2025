@@ -327,50 +327,53 @@
     </div>
     <div class="app-header__global-controls">
       <button id="exportCsvBtn" class="btn btn-outline">Descargar CSV</button>
-      <button id="toggleCompleteBtn" class="btn btn-ghost">Solo filas completas</button>
     </div>
   </header>
 
   <div class="layout">
     <aside class="sidebar">
-      <section class="filter-block">
-        <h2 class="filter-block__title">Filtros</h2>
+  <section class="filter-block">
+    <h2 class="filter-block__title">Filtros</h2>
 
-        <label class="form-field">
-          <span class="form-label">Región / zona</span>
-          <select id="regionSelect" class="form-input"></select>
-        </label>
+    <label class="form-field">
+      <span class="form-label">Región / zona</span>
+      <select id="regionSelect" class="form-input"></select>
+    </label>
 
-        <div class="form-field form-field--row">
-          <div>
-            <span class="form-label">Desde</span>
-            <input type="date" id="startDate" class="form-input" />
-          </div>
-          <div>
-            <span class="form-label">Hasta</span>
-            <input type="date" id="endDate" class="form-input" />
-          </div>
-        </div>
+    <div class="form-field form-field--row">
+      <div>
+        <span class="form-label">Desde</span>
+        <input type="date" id="startDate" class="form-input" />
+      </div>
+      <div>
+        <span class="form-label">Hasta</span>
+        <input type="date" id="endDate" class="form-input" />
+      </div>
+    </div>
 
-        <label class="form-field">
-          <span class="form-label">Agregación temporal</span>
-          <select id="aggSelect" class="form-input">
-            <option value="month" selected>Mes</option>
-            <option value="year">Año</option>
-          </select>
-        </label>
+    <label class="form-field">
+      <span class="form-label">Agregación temporal</span>
+      <select id="aggSelect" class="form-input">
+        <option value="month" selected>Mes</option>
+        <option value="year">Año</option>
+      </select>
+    </label>
 
-        <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
-      </section>
+    <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
+    <button id="toggleCompleteBtn" class="btn btn-ghost btn-block" style="margin-top:0.5rem;">
+      Solo filas completas
+    </button>
+  </section>
 
-      <section class="meta-block">
-        <h2 class="filter-block__title">Notas metodológicas</h2>
-        <ul class="meta-list">
-          <li>La función serverless integra clima, producción y precios en tiempo de consulta.</li>
-          <li>La vista está agregada por Mes/Año y Departamento. Fruta fija: Manzana.</li>
-        </ul>
-      </section>
-    </aside>
+  <section class="meta-block">
+    <h2 class="filter-block__title">Notas metodológicas</h2>
+    <ul class="meta-list">
+      <li>La función serverless integra clima, producción y precios en tiempo de consulta.</li>
+      <li>La vista está agregada por Mes/Año y Departamento. Fruta fija: Manzana.</li>
+    </ul>
+  </section>
+</aside>
+
 
     <main class="main">
       <section class="cards-row" aria-label="Indicadores resumidos">
