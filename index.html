@@ -125,64 +125,58 @@
       box-shadow:var(--focus-ring);
       border-color:var(--accent)
     }
+
     .checkbox-field{
-  display:flex;
-  align-items:center;
-  gap:0.5rem;
-  margin-bottom:0.75rem;
-  font-size:var(--fs-400);
-  color:var(--text-dim);
-  cursor:pointer;
-}
-
-.checkbox-field input[type="checkbox"]{
-  appearance:none;
-  -webkit-appearance:none;
-  -moz-appearance:none;
-  width:18px;
-  height:18px;
-  border-radius:6px;
-  border:1px solid var(--border-color);
-  background:var(--bg-surface-alt);
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  position:relative;
-  transition:all .15s ease;
-  cursor:pointer;
-}
-
-.checkbox-field input[type="checkbox"]::after{
-  content:"";
-  width:10px;
-  height:10px;
-  border-radius:3px;
-  background:var(--accent);
-  opacity:0;
-  transform:scale(.6);
-  transition:all .15s ease;
-}
-
-.checkbox-field input[type="checkbox"]:checked{
-  border-color:var(--accent);
-  box-shadow:var(--focus-ring);
-}
-
-.checkbox-field input[type="checkbox"]:checked::after{
-  opacity:1;
-  transform:scale(1);
-}
-
-.checkbox-field:hover input[type="checkbox"]{
-  border-color:var(--accent);
-}
-
-.checkbox-field span{
-  font-size:var(--fs-400);
-  color:var(--text-dim);
-  cursor:pointer;
-}
-
+      display:flex;
+      align-items:center;
+      gap:0.5rem;
+      margin-bottom:0.75rem;
+      font-size:var(--fs-400);
+      color:var(--text-dim);
+      cursor:pointer;
+    }
+    .checkbox-field input[type="checkbox"]{
+      appearance:none;
+      -webkit-appearance:none;
+      -moz-appearance:none;
+      width:18px;
+      height:18px;
+      border-radius:6px;
+      border:1px solid var(--border-color);
+      background:var(--bg-surface-alt);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      position:relative;
+      transition:all .15s ease;
+      cursor:pointer;
+    }
+    .checkbox-field input[type="checkbox"]::after{
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:3px;
+      background:var(--accent);
+      opacity:0;
+      transform:scale(.6);
+      transition:all .15s ease;
+    }
+    .checkbox-field input[type="checkbox"]:checked{
+      border-color:var(--accent);
+      box-shadow:var(--focus-ring);
+    }
+    .checkbox-field input[type="checkbox"]:checked::after{
+      opacity:1;
+      transform:scale(1);
+    }
+    .checkbox-field:hover input[type="checkbox"]{
+      border-color:var(--accent);
+    }
+    .checkbox-field span{
+      font-size:var(--fs-400);
+      color:var(--text-dim);
+      cursor:pointer;
+    }
 
     .btn{
       font-size:var(--fs-400);
@@ -328,6 +322,27 @@
       font-size:var(--fs-400)
     }
 
+    /* Gráficos simples */
+    .chart-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:var(--space-md);
+      margin-top:var(--space-sm);
+    }
+    @media (min-width:900px){
+      .chart-grid{
+        grid-template-columns:1fr 1fr;
+      }
+    }
+    .chart-box{
+      height:160px;
+    }
+    .chart-label{
+      margin:0 0 var(--space-2xs);
+      font-size:var(--fs-300);
+      color:var(--text-dim);
+    }
+
     .app-footer{
       border-top:1px solid var(--border-color);
       background:rgba(15,23,42,.4);
@@ -412,21 +427,19 @@
           </select>
         </label>
 
-        <!-- Checkbox Solo filas completas -->
         <label class="checkbox-field">
-  <input type="checkbox" id="onlyCompleteCheckbox" />
-  <span>Mostrar solo filas completas</span>
-</label>
+          <input type="checkbox" id="onlyCompleteCheckbox" />
+          <span>Mostrar solo filas completas</span>
+        </label>
 
-<button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
-
+        <button id="applyFiltersBtn" class="btn btn-primary btn-block">Aplicar filtros</button>
       </section>
 
       <section class="meta-block">
         <h2 class="filter-block__title">Notas metodológicas</h2>
         <ul class="meta-list">
-          <li>La función serverless integra clima, producción y precios en tiempo de consulta.</li>
-          <li>La vista está agregada por Mes/Año y Departamento. Fruta fija: Manzana.</li>
+          <li>Los datos provienen de fuentes públicas integradas en una vista mensual por departamento.</li>
+          <li>La fruta considerada es Manzana. Las métricas se calculan según los filtros aplicados.</li>
         </ul>
       </section>
     </aside>
@@ -463,6 +476,23 @@
 
       <section class="table-section">
         <div class="table-header">
+          <h3>Evolución en el tiempo</h3>
+          <p>Curvas simples basadas en los datos filtrados, agregadas por período.</p>
+        </div>
+        <div class="chart-grid">
+          <div class="chart-box">
+            <p class="chart-label">Producción total (t)</p>
+            <canvas id="chartProd"></canvas>
+          </div>
+          <div class="chart-box">
+            <p class="chart-label">Precio promedio ($/kg)</p>
+            <canvas id="chartPrice"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="table-section">
+        <div class="table-header">
           <h3>Observaciones integradas</h3>
           <p>Cada fila resume clima, producción y precio de manzana para una zona y período.</p>
         </div>
@@ -484,30 +514,6 @@
           </table>
         </div>
       </section>
-
-      <!-- Gráfico 1: Serie temporal Producción vs Precio -->
-  <section class="table-section">
-    <div class="table-header">
-      <h3>Evolución producción y precio</h3>
-      <p>
-        Series mensuales según filtros aplicados.
-        Si se selecciona una zona, se muestran solo sus datos.
-        Si no, se agregan todas las zonas.
-      </p>
-    </div>
-    <canvas id="chartProdPrecio" height="120"></canvas>
-  </section>
-
-  <section class="table-section">
-    <div class="table-header">
-      <h3>Relación producción - precio</h3>
-      <p>
-        Cada punto representa un período- zona con datos completos de producción y precio.
-      </p>
-    </div>
-    <canvas id="chartScatterProdPrice" height="120"></canvas>
-  </section>
-
     </main>
   </div>
 
@@ -516,8 +522,8 @@
     <p>Ministerio de Ganadería, Agricultura y Pesca · Integración de vistas virtuales</p>
   </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
     const API_URL = "/api/main";
 
     // ================= Helpers =================
@@ -600,77 +606,6 @@
       }
       return sources.join(" · ");
     }
-
-    function getTimeSeriesProdPrice() {
-  // Usa state.filteredData (ya agregada y filtrada)
-  if (!state.filteredData.length) {
-    return { labels: [], prod: [], price: [] };
-  }
-
-  const byFecha = new Map();
-
-  state.filteredData.forEach(row => {
-    const fecha = row.fecha;
-    if (!fecha) return;
-
-    // Si hay región seleccionada, filtramos; si no, agregamos todas
-    if (state.region && row.region !== state.region) return;
-
-    if (!byFecha.has(fecha)) {
-      byFecha.set(fecha, { prodSum: 0, prodCount: 0, priceSum: 0, priceCount: 0 });
-    }
-    const acc = byFecha.get(fecha);
-
-    if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
-      acc.prodSum += Number(row.produccion_tn);
-      acc.prodCount += 1;
-    }
-    if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
-      acc.priceSum += Number(row.precio_kg);
-      acc.priceCount += 1;
-    }
-  });
-
-  const fechas = Array.from(byFecha.keys()).sort((a,b)=> {
-    return toDateStrict(a) - toDateStrict(b);
-  });
-
-  const labels = [];
-  const prod = [];
-  const price = [];
-
-  fechas.forEach(f => {
-    const acc = byFecha.get(f);
-    const prodVal = acc.prodCount ? acc.prodSum : null;
-    const priceVal = acc.priceCount ? (acc.priceSum / acc.priceCount) : null;
-
-    // solo incluimos puntos donde exista al menos uno de los dos
-    if (prodVal != null || priceVal != null) {
-      labels.push(formatDateEs(f));
-      prod.push(prodVal);
-      price.push(priceVal);
-    }
-  });
-
-  return { labels, prod, price };
-}
-
-function getScatterProdPriceData() {
-  // Usa state.filteredData, sólo filas con producción y precio válidos
-  const points = state.filteredData
-    .filter(r =>
-      r.produccion_tn != null && !Number.isNaN(r.produccion_tn) &&
-      r.precio_kg != null && !Number.isNaN(r.precio_kg)
-    )
-    .map(r => ({
-      x: Number(r.produccion_tn),
-      y: Number(r.precio_kg),
-      label: `${formatDateEs(r.fecha)} · ${r.region}`
-    }));
-
-  return points;
-}
-
 
     // ================= Aggregation helpers =================
 
@@ -805,8 +740,8 @@ function getScatterProdPriceData() {
     // ================= State & DOM =================
 
     let combinedRows = [];
-    let chartProdPrecio = null;
-    let chartScatterProdPrice = null;
+    let chartProd = null;
+    let chartPrice = null;
 
     const state = {
       region: null,
@@ -855,24 +790,17 @@ function getScatterProdPriceData() {
     // ================= Backend integration =================
 
     async function fetchBackendTable(){
-      console.log("[frontend] Llamando API:", API_URL);
       const resp = await fetch(API_URL, { cache: "no-store" });
-      console.log("[frontend] Status:", resp.status);
-
       if(!resp.ok){
         throw new Error("Error al llamar al backend: " + resp.status);
       }
       const json = await resp.json();
-      console.log("[frontend] JSON crudo:", json);
 
       const rows = Array.isArray(json.data)
         ? json.data
         : Array.isArray(json)
           ? json
           : [];
-
-      console.log("[frontend] Filas recibidas:", rows.length);
-      console.log(rows[0]);
 
       if (!rows.length){
         return [];
@@ -909,7 +837,6 @@ function getScatterProdPriceData() {
         })
         .filter(r => r.fecha && r.region);
 
-      console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
       return mapped;
     }
 
@@ -1039,136 +966,143 @@ function getScatterProdPriceData() {
       });
     }
 
-    function renderChartProdPrecio() {
-  const ctx = document.getElementById("chartProdPrecio");
-  if (!ctx) return;
+    // -------- Gráficos simples (líneas) --------
 
-  const { labels, prod, price } = getTimeSeriesProdPrice();
+    function buildTimeSeries(metricKey, aggregate){
+      const buckets = new Map();
 
-  if (chartProdPrecio) {
-    chartProdPrecio.destroy();
-  }
+      state.filteredData.forEach(row => {
+        const f = row.fecha;
+        const v = row[metricKey];
+        if (!f || v == null || Number.isNaN(v)) return;
 
-  if (!labels.length) {
-    chartProdPrecio = null;
-    return;
-  }
+        if (!buckets.has(f)) buckets.set(f, []);
+        buckets.get(f).push(Number(v));
+      });
 
-  chartProdPrecio = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-          label: "Producción (t)",
-          data: prod,
-          yAxisID: "yProd",
-          borderWidth: 2,
-          tension: 0.2,
-          spanGaps: true
-        },
-        {
-          label: "Precio ($/kg)",
-          data: price,
-          yAxisID: "yPrice",
-          borderWidth: 2,
-          borderDash: [4,2],
-          tension: 0.2,
-          spanGaps: true
+      const fechas = Array.from(buckets.keys()).sort(
+        (a,b) => toDateStrict(a) - toDateStrict(b)
+      );
+
+      const labels = [];
+      const data = [];
+
+      fechas.forEach(f => {
+        const arr = buckets.get(f);
+        if (!arr || !arr.length) return;
+        let value;
+        if (aggregate === "sum"){
+          value = arr.reduce((x,y)=>x+y,0);
+        } else {
+          value = arr.reduce((x,y)=>x+y,0) / arr.length;
         }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        yProd: {
-          type: "linear",
-          position: "left",
-          title: { display: true, text: "Producción (t)" }
-        },
-        yPrice: {
-          type: "linear",
-          position: "right",
-          title: { display: true, text: "Precio ($/kg)" },
-          grid: { drawOnChartArea: false }
-        }
-      },
-      plugins: {
-        legend: { labels: { color: "#e5e7eb" } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const v = ctx.parsed.y;
-              return `${ctx.dataset.label}: ${v != null ? v.toFixed(1) : "--"}`;
+        labels.push(formatDateEs(f));
+        data.push(value);
+      });
+
+      return { labels, data };
+    }
+
+    function renderCharts(){
+      const prodCanvas = document.getElementById("chartProd");
+      const priceCanvas = document.getElementById("chartPrice");
+
+      if (chartProd){
+        chartProd.destroy();
+        chartProd = null;
+      }
+      if (chartPrice){
+        chartPrice.destroy();
+        chartPrice = null;
+      }
+
+      if (!state.filteredData.length){
+        return;
+      }
+
+      if (prodCanvas){
+        const series = buildTimeSeries("produccion_tn", "sum");
+        if (series.labels.length){
+          chartProd = new Chart(prodCanvas, {
+            type: "line",
+            data: {
+              labels: series.labels,
+              datasets: [{
+                label: "Producción total (t)",
+                data: series.data,
+                borderWidth: 1.5,
+                tension: 0.15,
+                pointRadius: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { labels: { color: "#e5e7eb" } }
+              },
+              scales: {
+                x: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { display: false }
+                },
+                y: {
+                  beginAtZero: true,
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "rgba(148,163,253,.08)" }
+                }
+              }
             }
-          }
+          });
+        }
+      }
+
+      if (priceCanvas){
+        const series = buildTimeSeries("precio_kg", "avg");
+        if (series.labels.length){
+          chartPrice = new Chart(priceCanvas, {
+            type: "line",
+            data: {
+              labels: series.labels,
+              datasets: [{
+                label: "Precio promedio ($/kg)",
+                data: series.data,
+                borderWidth: 1.5,
+                tension: 0.15,
+                pointRadius: 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { labels: { color: "#e5e7eb" } }
+              },
+              scales: {
+                x: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { display: false }
+                },
+                y: {
+                  beginAtZero: false,
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "rgba(148,163,253,.08)" }
+                }
+              }
+            }
+          });
         }
       }
     }
-  });
-}
 
-function renderChartScatterProdPrice() {
-  const ctx = document.getElementById("chartScatterProdPrice");
-  if (!ctx) return;
-
-  const points = getScatterProdPriceData();
-
-  if (chartScatterProdPrice) {
-    chartScatterProdPrice.destroy();
-  }
-
-  if (!points.length) {
-    chartScatterProdPrice = null;
-    return;
-  }
-
-  chartScatterProdPrice = new Chart(ctx, {
-    type: "scatter",
-    data: {
-      datasets: [{
-        label: "Períodos con datos completos",
-        data: points,
-        pointRadius: 4
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          title: { display: true, text: "Producción (t)" }
-        },
-        y: {
-          title: { display: true, text: "Precio ($/kg)" }
-        }
-      },
-      plugins: {
-        legend: { labels: { color: "#e5e7eb" } },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const p = ctx.raw;
-              return `${p.label} · Prod: ${p.x.toFixed(1)} t · Precio: ${p.y.toFixed(2)} $/kg`;
-            }
-          }
-        }
-      }
-    }
-  });
-}
-
+    // -------- Ciclo principal --------
 
     function renderAll(){
       applyFilters();
       renderKPIs();
       renderTable();
-      renderChartProdPrecio();
-      renderChartScatterProdPrice();
+      renderCharts();
     }
-
 
     function initFilterControlsFromData(){
       const regions=[...new Set(combinedRows.map(r=>r.region).filter(Boolean))].sort();
@@ -1254,7 +1188,6 @@ function renderChartScatterProdPrice() {
     (async function boot(){
       await loadData();
     })();
-</script>
-
+  </script>
 </body>
 </html>
