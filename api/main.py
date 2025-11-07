@@ -76,34 +76,74 @@ MESES_MAP_ABR = {
 
 def wrapper_fuentes(source_name, url):
     """
-    Wrapper general: carga CSV local o remoto, normaliza columnas, agrega provenance.
+    Wrapper general
+    - Soporta múltiples encodings comunes (utf-8, latin1, cp1252, etc.).
+    - Prueba automáticamente ';' y ',' como separadores.
+    - Normaliza columnas y agrega 'origen_fuente'.
     """
     print(f"--- Cargando Fuente: {source_name} ---")
-    df = pd.DataFrame()
+
+    # Encodings y separadores a probar (en este orden)
+    ENCODINGS = ["utf-8", "utf-8-sig", "latin1", "iso-8859-1", "cp1252"]
+    SEPARATORS = [";", ","]
+
+    def try_read_from_local(path):
+        last_exc = None
+        for enc in ENCODINGS:
+            for sep in SEPARATORS:
+                try:
+                    df = pd.read_csv(
+                        path,
+                        sep=sep,
+                        on_bad_lines="skip",
+                        encoding=enc
+                    )
+                    # Evitar falsos positivos de una sola columna gigante
+                    if df.shape[1] > 1:
+                        print(f"{source_name}: leído OK local con encoding={enc}, sep='{sep}'")
+                        return df
+                except Exception as e:
+                    last_exc = e
+                    continue
+        if last_exc:
+            raise last_exc
+        raise ValueError(f"No se pudo leer {source_name} como CSV local con los encodings probados.")
+
+    def try_read_from_url(the_url):
+        resp = requests.get(the_url, timeout=30)
+        resp.raise_for_status()
+        text = resp.text
+
+        last_exc = None
+        for enc in ENCODINGS:
+            for sep in SEPARATORS:
+                try:
+                    content = StringIO(text)
+                    df = pd.read_csv(
+                        content,
+                        sep=sep,
+                        on_bad_lines="skip",
+                        encoding=enc
+                    )
+                    if df.shape[1] > 1:
+                        print(f"{source_name}: leído OK URL con encoding={enc}, sep='{sep}'")
+                        return df
+                except Exception as e:
+                    last_exc = e
+                    continue
+        if last_exc:
+            raise last_exc
+        raise ValueError(f"No se pudo leer {source_name} desde URL con los encodings probados.")
 
     try:
+        # 1) Local si existe el path
         if os.path.exists(url):
-            # Archivo local
-            try:
-                df = pd.read_csv(url, sep=";", on_bad_lines="skip", encoding="utf-8")
-                if df.shape[1] <= 1:
-                    df = pd.read_csv(url, sep=",", on_bad_lines="skip", encoding="utf-8")
-            except Exception:
-                df = pd.read_csv(url, sep=",", on_bad_lines="skip", encoding="utf-8")
+            df = try_read_from_local(url)
         else:
-            # URL remota
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            content = StringIO(response.text)
-            try:
-                df = pd.read_csv(content, sep=";", on_bad_lines="skip", encoding="utf-8")
-                if df.shape[1] <= 1:
-                    content.seek(0)
-                    df = pd.read_csv(content, sep=",", on_bad_lines="skip", encoding="utf-8")
-            except Exception:
-                content.seek(0)
-                df = pd.read_csv(content, sep=",", on_bad_lines="skip", encoding="utf-8")
+            # 2) Si no existe como archivo, interpretamos como URL
+            df = try_read_from_url(url)
 
+        # Limpieza básica
         df = df.dropna(how="all")
 
         df.columns = (
@@ -114,17 +154,13 @@ def wrapper_fuentes(source_name, url):
         )
 
         df["origen_fuente"] = source_name
-        print(f"Éxito: Datos cargados. Filas: {len(df)}")
+        print(f"Éxito: {source_name} Filas: {len(df)} Columnas: {list(df.columns)}")
         return df
 
-    except requests.exceptions.HTTPError as e:
-        print(f"ERROR HTTP al cargar {source_name}: {e}")
-    except requests.exceptions.Timeout:
-        print(f"ERROR DE TIEMPO DE ESPERA al cargar {source_name}")
     except Exception as e:
         print(f"ERROR GENERAL al cargar {source_name}: {e}")
+        return pd.DataFrame()
 
-    return pd.DataFrame()
 
 def wrapper_web_scraping_estaciones(source_name, url):
     """
