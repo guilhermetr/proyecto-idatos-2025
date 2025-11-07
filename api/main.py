@@ -489,7 +489,7 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            df = get_cached_vista_global()
+            df = mediador()
 
             if isinstance(df, pd.DataFrame) and not df.empty:
                 records = to_jsonable_records(df)
