@@ -72,12 +72,10 @@ def wrapper_fuentes(source_name: str, url: str) -> pd.DataFrame:
     df = pd.DataFrame()
 
     try:
-        # En Vercel asumimos URLs HTTP (no rutas locales /content/...)
-        resp = requests.get(url, timeout=30)
+        resp = requests.get(url, timeout=(5, 120))
         resp.raise_for_status()
         content = StringIO(resp.text)
 
-        # Intentar con ';'
         try:
             df = pd.read_csv(content, sep=';', on_bad_lines='skip', encoding='utf-8')
             # Si vino una sola columna gigante, reintentar con ','
@@ -195,14 +193,14 @@ def mediador() -> pd.DataFrame:
         print("[mediador] Sin datos integrados")
         return pd.DataFrame()
 
-        # ---------------- INUMET: clima horario -> mensual ----------------
-    try:
-        df_temp = integrated_data['INUMET_temperatura'].rename(columns={'temp_aire': 'temperatura_c'})
-        df_hum = integrated_data['INUMET_humedad'].rename(columns={'hum_relativa': 'humedad_pje'})
-        df_precip = integrated_data['INUMET_precipitaciones'].rename(columns={'precip_horario': 'precipitacion_mm'})
-        df_est = integrated_data.get('INUMET_estaciones', pd.DataFrame())
-    except KeyError as e:
-        print(f"[mediador] Falta fuente INUMET esperada: {e}")
+    # ---------------- INUMET: clima horario -> mensual ----------------    
+    df_temp = integrated_data.get('INUMET_temperatura', pd.DataFrame())
+    df_hum = integrated_data.get('INUMET_humedad', pd.DataFrame())
+    df_precip = integrated_data.get('INUMET_precipitaciones', pd.DataFrame())
+    df_est = integrated_data.get('INUMET_estaciones', pd.DataFrame())
+
+    if df_temp.empty and df_hum.empty and df_precip.empty:
+        print("[mediador] No se pudo cargar ninguna serie climática de INUMET.")
         return pd.DataFrame()
 
     # Fechas a datetime
@@ -378,7 +376,6 @@ def mediador() -> pd.DataFrame:
 # ---------------------------------------------------------------------
 
 class handler(BaseHTTPRequestHandler):
-    # Opcional: manejar preflight CORS
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -399,7 +396,6 @@ class handler(BaseHTTPRequestHandler):
                 self.send_response(200)
 
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            # CORS: restringe a tu dominio real cuando lo tengas
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body.encode("utf-8"))
