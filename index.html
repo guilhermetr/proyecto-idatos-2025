@@ -522,7 +522,12 @@
   </footer>
 
 <script>
-  const API_URL = "/api/integrate";
+  // ================= Config: Vercel backend =================
+  // If frontend is served from the same Vercel project:
+  //   const API_URL = "/api/integrated";
+  // If served from GitHub Pages or another host, use full URL:
+  //   const API_URL = "https://<your-project>.vercel.app/api/integrated";
+  const API_URL = "/api/integrated";
 
   // ================= Helpers: numeric, dates =================
 
@@ -536,15 +541,22 @@
     if(!raw) return null;
     let s = String(raw).trim();
 
+    // "YYYY-MM-DD HH:MM" -> "YYYY-MM-DD"
     if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
       s = s.split(" ")[0];
     }
 
+    // "YYYY-MM-DD" or "YYYY/MM/DD"
     let m = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})$/);
     if (m) return `${m[1]}-${m[2]}-${m[3]}`;
 
+    // "DD/MM/YYYY" or "DD-MM-YYYY"
     m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
     if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+
+    // "YYYY-MM" (monthly)
+    m = s.match(/^(\d{4})-(\d{2})$/);
+    if (m) return `${m[1]}-${m[2]}`;
 
     const d = new Date(s);
     if (!Number.isNaN(d.getTime())){
@@ -557,12 +569,15 @@
   }
 
   function formatDateEs(s){
+    // Quincena "YYYY-MM-Q1"
     let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
     if (m) return `Q${m[3]} ${m[2]}/${m[1]}`;
 
+    // Mes "YYYY-MM"
     m = s.match(/^(\d{4})-(\d{2})$/);
     if (m) return `${m[2]}/${m[1]}`;
 
+    // Día "YYYY-MM-DD"
     m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
@@ -597,8 +612,12 @@
   // ================= Aggregation helpers =================
 
   function ymdParts(fechaStr) {
-    const [yy,mm,dd] = fechaStr.split("-").map(x=>parseInt(x,10));
-    return {yy,mm,dd};
+    // Supports "YYYY-MM" and "YYYY-MM-DD"
+    const parts = String(fechaStr).split("-");
+    const yy = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1] ?? "1", 10);
+    const dd = parseInt(parts[2] ?? "1", 10); // if monthly, assume day 1
+    return {yy, mm, dd};
   }
 
   function quincenaFromDay(dayNumber){
@@ -694,14 +713,18 @@
 
       let bucketKey;
       let meta;
+
       if (mode === "day"){
+        // With monthly input, dd=1; effectively behaves like monthly.
         bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"day", yy, mm, dd};
       } else if (mode === "fortnight"){
+        // With monthly input, we map entire month to first quincena.
         const quin = quincenaFromDay(dd);
         bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"fortnight", yy, mm, quincena: quin};
       } else {
+        // Mes
         bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"month", yy, mm};
       }
@@ -783,13 +806,11 @@
 
   function setLoading(isLoading, message){
     if (message) loadingTextEl.textContent = message;
-    const method = isLoading ? "add" : "remove";
     if (isLoading){
       loadingOverlay.classList.remove("hidden");
     } else {
       loadingOverlay.classList.add("hidden");
     }
-
     [refreshDataBtn, applyFiltersBtn, resetFiltersBtn, exportCsvBtn].forEach(btn=>{
       if(!btn) return;
       btn.disabled = !!isLoading;
@@ -805,41 +826,35 @@
     }
     const json = await resp.json();
 
-    let rawRows = [];
+    // Expect shape: { data: [ { Mes_año, Departamento, Precip_Total_mm, Temp_Media_C, Hum_Media_Pje, Produccion_kg, ... } ] }
+    const rows = Array.isArray(json.data)
+      ? json.data
+      : Array.isArray(json)
+        ? json
+        : [];
 
-    if (Array.isArray(json)) {
-      rawRows = json;
-    } else if (Array.isArray(json.data)) {
-      rawRows = json.data;
-    } else if (Array.isArray(json.rows)) {
-      rawRows = json.rows;
-    } else if (json && typeof json === "object") {
-      for (const [sourceName, records] of Object.entries(json)) {
-        if (!Array.isArray(records)) continue;
-        for (const r of records) {
-          rawRows.push({
-            ...r,
-            origen_fuente: r.origen_fuente || r.origin_source || sourceName
-          });
-        }
-      }
-    } else {
-      throw new Error("Formato de respuesta inesperado del backend");
+    if (!rows.length){
+      return [];
     }
 
-    return rawRows
+    return rows
       .map(r => {
-        const iso = toIsoDate(r.fecha ?? r.date);
+        const mesAnio = r.Mes_año ?? r.mes_año ?? null;
+        const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
+
         return {
-          fecha: iso,
-          region: r.region ?? r.zona ?? r.estacion_id ?? null,
-          fruta: r.fruta ?? r.variedad ?? null,
-          lluvia_mm: numOrNull(r.lluvia_mm ?? r.precip_mm ?? r.precipitacion_mm ?? r.precip_horario),
-          t_min: numOrNull(r.t_min ?? r.temp_min),
-          t_max: numOrNull(r.t_max ?? r.temp_max ?? r.temp_aire),
-          produccion_tn: numOrNull(r.produccion_tn ?? r.produccion),
-          precio_kg: numOrNull(r.precio_kg ?? r.precio),
-          origen_fuente: r.origen_fuente ?? null
+          // fecha mensual "YYYY-MM" (frontend helpers soportan este formato)
+          fecha,
+          region: r.Departamento ?? r.departamento ?? r.region ?? null,
+          fruta: null,
+          lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
+          // usamos Temp_Media_C como variable climática principal
+          t_min: null,
+          t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
+          // producción mensual integrada (puedes dividir por 1000 si quieres toneladas)
+          produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
+          precio_kg: null, // precios aún no integrados
+          origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
         };
       })
       .filter(row => row.fecha);
@@ -847,7 +862,7 @@
 
   async function loadData(){
     try{
-      setLoading(true, "Cargando datos integrados desde las fuentes...");
+      setLoading(true, "Cargando datos integrados desde el mediador...");
       combinedRows = await fetchBackendTable();
       initFilterControlsFromData();
       renderAll();
@@ -868,8 +883,16 @@
   // ================= Rendering =================
 
   function toDateStrict(s){
-    const [y,m,d] = s.split("-").map(Number);
-    return new Date(y,m-1,d);
+    if (!s) return new Date(NaN);
+    const parts = s.split("-").map(Number);
+    if (parts.length === 3){
+      return new Date(parts[0], parts[1]-1, parts[2]);
+    }
+    if (parts.length === 2){
+      // Monthly: assume day 1
+      return new Date(parts[0], parts[1]-1, 1);
+    }
+    return new Date(NaN);
   }
 
   function applyFilters(){
