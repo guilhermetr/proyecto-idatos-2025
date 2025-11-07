@@ -177,6 +177,7 @@ def mediador() -> pd.DataFrame:
     integrated_data = {}
     print("[mediador] Inicio carga de fuentes")
 
+    # 1) Carga de fuentes
     for source_name, url in DATA_SOURCES.items():
         if "INUMET_estaciones" in source_name:
             df = wrapper_web_scraping_estaciones(source_name, url)
@@ -186,187 +187,203 @@ def mediador() -> pd.DataFrame:
         if not df.empty:
             integrated_data[source_name] = df
 
-        # Pausa corta para ser amable con las fuentes
         time.sleep(0.2)
 
     if not integrated_data:
         print("[mediador] Sin datos integrados")
         return pd.DataFrame()
 
-    # ---------------- INUMET: clima horario -> mensual ----------------    
-    df_temp = integrated_data.get('INUMET_temperatura', pd.DataFrame())
-    df_hum = integrated_data.get('INUMET_humedad', pd.DataFrame())
-    df_precip = integrated_data.get('INUMET_precipitaciones', pd.DataFrame())
-    df_est = integrated_data.get('INUMET_estaciones', pd.DataFrame())
+    # 2) INUMET: normalizar y mapear columnas como en el script original
 
+    df_temp = integrated_data.get("INUMET_temperatura", pd.DataFrame()).copy()
+    df_hum = integrated_data.get("INUMET_humedad", pd.DataFrame()).copy()
+    df_precip = integrated_data.get("INUMET_precipitaciones", pd.DataFrame()).copy()
+    df_est = integrated_data.get("INUMET_estaciones", pd.DataFrame()).copy()
+
+    # Renombres clave (solo si existen)
+    if not df_temp.empty and "temp_aire" in df_temp.columns:
+        df_temp = df_temp.rename(columns={"temp_aire": "temperatura_c"})
+    if not df_hum.empty and "hum_relativa" in df_hum.columns:
+        df_hum = df_hum.rename(columns={"hum_relativa": "humedad_pje"})
+    if not df_precip.empty and "precip_horario" in df_precip.columns:
+        df_precip = df_precip.rename(columns={"precip_horario": "precipitacion_mm"})
+
+    # Si ninguna serie climática está disponible, abortar
     if df_temp.empty and df_hum.empty and df_precip.empty:
         print("[mediador] No se pudo cargar ninguna serie climática de INUMET.")
         return pd.DataFrame()
 
-    # Fechas a datetime
+    # Parseo de fechas
     for df_src in (df_temp, df_hum, df_precip):
-        if 'fecha' in df_src.columns:
-            df_src['fecha'] = pd.to_datetime(df_src['fecha'], errors='coerce')
+        if "fecha" in df_src.columns:
+            df_src["fecha"] = pd.to_datetime(df_src["fecha"], errors="coerce")
 
-    # Origen combinado
-    origenes_clima = [
-        key for key in ['INUMET_temperatura', 'INUMET_humedad', 'INUMET_precipitaciones']
-        if key in integrated_data and not integrated_data[key].empty
-    ]
-    origen_fuente_clima_combinado = ', '.join(origenes_clima) if origenes_clima else 'INUMET'
+    # Construir base para merges: usamos la primera fuente no vacía
+    if not df_temp.empty:
+        df_clima = df_temp[["fecha", "estacion_id", "temperatura_c"]].copy()
+    elif not df_hum.empty:
+        df_clima = df_hum[["fecha", "estacion_id"]].copy()
+    else:
+        df_clima = df_precip[["fecha", "estacion_id"]].copy()
 
-    # Merge horario: temp + hum + precip por (fecha, estacion_id)
-    df_clima = df_temp.merge(
-        df_hum[['fecha', 'estacion_id', 'humedad_pje']],
-        on=['fecha', 'estacion_id'],
-        how='outer'
-    )
-    df_clima = df_clima.merge(
-        df_precip[['fecha', 'estacion_id', 'precipitacion_mm']],
-        on=['fecha', 'estacion_id'],
-        how='outer'
-    )
-
-    # Añadir departamento si tenemos tabla de estaciones
-    if not df_est.empty and 'estacion_id' in df_est.columns:
+    # Merge con humedad si existe mapeada
+    if not df_hum.empty and "humedad_pje" in df_hum.columns:
         df_clima = df_clima.merge(
-            df_est[['estacion_id', 'departamento']],
-            on='estacion_id',
-            how='left'   # <- antes era inner
+            df_hum[["fecha", "estacion_id", "humedad_pje"]],
+            on=["fecha", "estacion_id"],
+            how="outer"
+        )
+
+    # Merge con precipitación si existe mapeada
+    if not df_precip.empty and "precipitacion_mm" in df_precip.columns:
+        df_clima = df_clima.merge(
+            df_precip[["fecha", "estacion_id", "precipitacion_mm"]],
+            on=["fecha", "estacion_id"],
+            how="outer"
+        )
+
+    # Merge con estaciones (departamento); si falla, usamos estacion_id como fallback
+    if not df_est.empty and "estacion_id" in df_est.columns:
+        df_clima = df_clima.merge(
+            df_est[["estacion_id", "departamento"]],
+            on="estacion_id",
+            how="left"
         )
     else:
-        df_clima['departamento'] = pd.NA
+        df_clima["departamento"] = pd.NA
 
-    # Fallback: si nadie tiene departamento, usar estacion_id para no perder todo
-    if df_clima['departamento'].notna().sum() == 0:
+    if df_clima["departamento"].notna().sum() == 0:
         print("[mediador] Advertencia: sin match estacion_id-estaciones; usando estacion_id como Departamento.")
-        df_clima['departamento'] = df_clima['estacion_id']
+        df_clima["departamento"] = df_clima["estacion_id"]
 
-    # Eliminar filas sin fecha o sin 'departamento'
-    df_clima = df_clima.dropna(subset=['fecha', 'departamento'])
-
+    # Limpiar filas sin fecha o sin departamento
+    df_clima = df_clima.dropna(subset=["fecha", "departamento"])
     if df_clima.empty:
-        print("[mediador] Clima integrado vacío después de joins.")
+        print("[mediador] Clima integrado vacío después de limpieza.")
         return pd.DataFrame()
 
-    # Clave temporal mensual
-    df_clima['Mes_año'] = df_clima['fecha'].dt.to_period('M')
+    # Asegurar columnas numéricas aunque alguna fuente falte
+    for col in ["temperatura_c", "humedad_pje", "precipitacion_mm"]:
+        if col not in df_clima.columns:
+            df_clima[col] = pd.NA
 
-    # Agregación mensual por Mes_año + Departamento
+    # Clave temporal mensual
+    df_clima["Mes_año"] = df_clima["fecha"].dt.to_period("M")
+
+    # Agregación mensual
     df_clima_mensual = df_clima.groupby(
-        ['Mes_año', 'departamento'],
+        ["Mes_año", "departamento"],
         as_index=False
     ).agg(
-        precip_total_mm=('precipitacion_mm', 'sum'),
-        temp_media_c=('temperatura_c', 'mean'),
-        hum_media_pje=('humedad_pje', 'mean')
+        precip_total_mm=("precipitacion_mm", "sum"),
+        temp_media_c=("temperatura_c", "mean"),
+        hum_media_pje=("humedad_pje", "mean"),
     )
 
     if df_clima_mensual.empty:
         print("[mediador] Agregación mensual de clima vacía.")
         return pd.DataFrame()
 
-    # Redondeo
-    df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']] = (
-        df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']].round(1)
+    df_clima_mensual[["precip_total_mm", "temp_media_c", "hum_media_pje"]] = (
+        df_clima_mensual[["precip_total_mm", "temp_media_c", "hum_media_pje"]].round(1)
     )
 
-    # Renombres finales clima
     df_clima_mensual = df_clima_mensual.rename(columns={
-        'departamento': 'Departamento',
-        'precip_total_mm': 'Precip_Total_mm',
-        'temp_media_c': 'Temp_Media_C',
-        'hum_media_pje': 'Hum_Media_Pje'
+        "departamento": "Departamento",
+        "precip_total_mm": "Precip_Total_mm",
+        "temp_media_c": "Temp_Media_C",
+        "hum_media_pje": "Hum_Media_Pje",
     })
-    df_clima_mensual['origen_fuente'] = origen_fuente_clima_combinado
 
+    # Origen combinado solo con fuentes efectivamente cargadas
+    origenes_clima = [
+        k for k in ["INUMET_temperatura", "INUMET_humedad", "INUMET_precipitaciones"]
+        if k in integrated_data and not integrated_data[k].empty
+    ]
+    df_clima_mensual["origen_fuente"] = ", ".join(origenes_clima) or "INUMET"
 
-    # ---------------- UAM: producción mensual (Manzana) ----------------
+    # 3) UAM: producción mensual (idéntico a tu versión actual)
+
     df_produccion_mensual = pd.DataFrame()
-    if 'UAM_produccion' in integrated_data:
-        df_produccion = integrated_data['UAM_produccion'].copy()
+    if "UAM_produccion" in integrated_data:
+        df_produccion = integrated_data["UAM_produccion"].copy()
 
-        # Normalizar nombres ya se hizo en wrapper
-        if 'especie' in df_produccion.columns:
-            df_filtrado = df_produccion[df_produccion['especie'] == 'Manzana']
+        if "especie" in df_produccion.columns:
+            df_filtrado = df_produccion[df_produccion["especie"] == "Manzana"]
         else:
-            df_filtrado = df_produccion  # si el esquema cambia, no filtramos
+            df_filtrado = df_produccion
 
-        columnas_a_eliminar = ['grupo', 'variedad', 'especie', 'unidad', 'origen_fuente']
+        columnas_a_eliminar = ["grupo", "variedad", "especie", "unidad", "origen_fuente"]
         columnas_meses = [c for c in df_filtrado.columns if c not in columnas_a_eliminar]
 
         df_produccion_bruto = df_filtrado[columnas_meses].copy()
-        df_produccion_bruto['dummy'] = 1  # para el melt
+        df_produccion_bruto["dummy"] = 1
 
         df_produccion_final = df_produccion_bruto.melt(
-            id_vars=['dummy'],
-            var_name='Mes_Bruto',
-            value_name='Produccion_kg'
-        ).drop(columns=['dummy'])
+            id_vars=["dummy"],
+            var_name="Mes_Bruto",
+            value_name="Produccion_kg"
+        ).drop(columns=["dummy"])
 
-        # Limpieza numérica
-        df_produccion_final['Produccion_kg'] = (
-            df_produccion_final['Produccion_kg']
+        df_produccion_final["Produccion_kg"] = (
+            df_produccion_final["Produccion_kg"]
             .astype(str)
-            .str.replace('.', '', regex=False)
-            .str.replace(' ', '', regex=False)
-            .str.replace('-', '0', regex=False)
-            .str.replace(',', '.', regex=False)
+            .str.replace(".", "", regex=False)
+            .str.replace(" ", "", regex=False)
+            .str.replace("-", "0", regex=False)
+            .str.replace(",", ".", regex=False)
         )
-        df_produccion_final['Produccion_kg'] = pd.to_numeric(
-            df_produccion_final['Produccion_kg'], errors='coerce'
+        df_produccion_final["Produccion_kg"] = pd.to_numeric(
+            df_produccion_final["Produccion_kg"], errors="coerce"
         )
-        df_produccion_final = df_produccion_final.dropna(subset=['Produccion_kg'])
+        df_produccion_final = df_produccion_final.dropna(subset=["Produccion_kg"])
 
-        # Parse Mes_Bruto tipo "ene07"
-        df_produccion_final['Mes_Num'] = (
-            df_produccion_final['Mes_Bruto'].str[:3].str.lower().map(MESES_MAP_ABR)
+        df_produccion_final["Mes_Num"] = (
+            df_produccion_final["Mes_Bruto"].str[:3].str.lower().map(MESES_MAP_ABR)
         )
-        df_produccion_final['Año_Num'] = df_produccion_final['Mes_Bruto'].str[3:].apply(
+        df_produccion_final["Año_Num"] = df_produccion_final["Mes_Bruto"].str[3:].apply(
             lambda x: f"20{x}" if isinstance(x, str) and x.isdigit() else None
         )
-        df_produccion_final = df_produccion_final.dropna(subset=['Mes_Num', 'Año_Num'])
+        df_produccion_final = df_produccion_final.dropna(subset=["Mes_Num", "Año_Num"])
 
-        df_produccion_final['Fecha_Str'] = (
-            df_produccion_final['Mes_Num'] + '-' + df_produccion_final['Año_Num']
+        df_produccion_final["Fecha_Str"] = (
+            df_produccion_final["Mes_Num"] + "-" + df_produccion_final["Año_Num"]
         )
-        df_produccion_final['Mes_año'] = pd.to_datetime(
-            df_produccion_final['Fecha_Str'],
-            format='%m-%Y',
-            errors='coerce'
-        ).dt.to_period('M')
+        df_produccion_final["Mes_año"] = pd.to_datetime(
+            df_produccion_final["Fecha_Str"],
+            format="%m-%Y",
+            errors="coerce"
+        ).dt.to_period("M")
 
-        df_produccion_final = df_produccion_final.dropna(subset=['Mes_año'])
+        df_produccion_final = df_produccion_final.dropna(subset=["Mes_año"])
 
         df_produccion_mensual = df_produccion_final.groupby(
-            ['Mes_año'], as_index=False
+            ["Mes_año"], as_index=False
         ).agg(
-            Produccion_kg=('Produccion_kg', 'sum')
+            Produccion_kg=("Produccion_kg", "sum")
         )
 
-    # ---------------- Fusión Global ----------------
+    # 4) Fusión Global
 
     df_global = df_clima_mensual.copy()
 
     if not df_produccion_mensual.empty:
         df_global = df_global.merge(
             df_produccion_mensual,
-            on='Mes_año',
-            how='left'
+            on="Mes_año",
+            how="left"
         )
     else:
-        df_global['Produccion_kg'] = pd.NA
+        df_global["Produccion_kg"] = pd.NA
 
-    # Esquema final (Mes_año mensual por Departamento)
     esquema_cols = [
-        'Mes_año', 'Departamento',
-        'Precip_Total_mm', 'Temp_Media_C', 'Hum_Media_Pje',
-        'Produccion_kg'
+        "Mes_año", "Departamento",
+        "Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje",
+        "Produccion_kg"
     ]
     df_global = df_global[esquema_cols]
 
-    # Convertir Period -> str para JSON limpio (e.g. "2020-01")
-    df_global['Mes_año'] = df_global['Mes_año'].astype(str)
+    df_global["Mes_año"] = df_global["Mes_año"].astype(str)
 
     print(f"[mediador] Filas en vista_global_final: {len(df_global)}")
     return df_global
