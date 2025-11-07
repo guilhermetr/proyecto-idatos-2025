@@ -368,7 +368,7 @@
   <header class="app-header">
     <div class="app-header__titles">
       <h1>Integración de datos frutícolas</h1>
-      <p class="subtitle">Clima (INUMET), Producción (INIA / INE), Precios (consumidor)</p>
+      <p class="subtitle">Clima (INUMET), Producción (INIA / INE / UAM), Precios (MEF)</p>
     </div>
     <div class="app-header__global-controls">
       <button id="exportCsvBtn" class="btn btn-outline">Descargar CSV</button>
@@ -418,7 +418,7 @@
         <h2 class="filter-block__title">Notas metodológicas</h2>
         <ul class="meta-list">
           <li>Los datos se consultan a través de una función serverless que descarga y normaliza las fuentes públicas.</li>
-          <li>No se mantiene una base de datos persistente: la función actúa como mediador y devuelve los datos integrados bajo demanda.</li>
+          <li>No se mantiene una base persistente: la función actúa como mediador y devuelve la vista integrada por período y departamento.</li>
         </ul>
       </section>
     </aside>
@@ -427,10 +427,10 @@
       <section class="cards-row" aria-label="Indicadores resumidos">
         <article class="card">
           <header class="card__header">
-            <span class="card__title">Temp. máx. promedio</span>
+            <span class="card__title">Temp. promedio</span>
             <span class="card__unit">°C</span>
           </header>
-          <div class="card__value" id="kpiTempMax">--</div>
+          <div class="card__value" id="kpiTemp">--</div>
           <footer class="card__footer" id="kpiTempMeta">Promedio</footer>
         </article>
 
@@ -456,7 +456,7 @@
       <section class="charts-grid">
         <div class="chart-card">
           <header class="chart-card__header">
-            <h3>Temperatura máxima</h3>
+            <h3>Temperatura promedio</h3>
             <p class="chart-card__sub">Datos climáticos (INUMET). Eje Y: °C.</p>
           </header>
           <canvas id="tempChart" width="600" height="240"></canvas>
@@ -465,7 +465,7 @@
         <div class="chart-card">
           <header class="chart-card__header">
             <h3>Producción estimada</h3>
-            <p class="chart-card__sub">Rendimiento por zona (INIA / INE). Eje Y: t.</p>
+            <p class="chart-card__sub">Producción mensual de manzana (UAM). Eje Y: t.</p>
           </header>
           <canvas id="prodChart" width="600" height="240"></canvas>
         </div>
@@ -473,7 +473,7 @@
         <div class="chart-card chart-card--wide">
           <header class="chart-card__header">
             <h3>Precio al consumidor</h3>
-            <p class="chart-card__sub">Serie agregada. Eje Y: $/kg.</p>
+            <p class="chart-card__sub">Precios medios mensuales (MEF). Eje Y: $/kg.</p>
           </header>
           <canvas id="priceChart" width="1200" height="240"></canvas>
         </div>
@@ -482,7 +482,7 @@
       <section class="table-section">
         <div class="table-header">
           <h3>Observaciones integradas</h3>
-          <p>Cada fila resume clima, producción, precio y trazabilidad de origen para la misma fruta / zona / período.</p>
+          <p>Cada fila resume clima, producción y precio para la misma fruta / zona / período.</p>
         </div>
         <div class="table-wrapper">
           <table class="data-table" id="dataTable">
@@ -492,8 +492,8 @@
                 <th>Zona</th>
                 <th>Fruta</th>
                 <th>Lluvia (mm)</th>
-                <th>T. mín (°C)</th>
-                <th>T. máx (°C)</th>
+                <th>T. prom (°C)</th>
+                <th>Humedad (%)</th>
                 <th>Producción (t)</th>
                 <th>Precio ($/kg)</th>
                 <th>Fuente</th>
@@ -507,29 +507,27 @@
       <section class="provenance-section">
         <h3>Trazabilidad de las fuentes</h3>
         <ul class="prov-list" id="provenanceList">
-          <li>Clima: INUMET (temperatura, precipitación).</li>
-          <li>Producción / Rendimientos / Precios consumidor: INIA / INE / MEF (datasets públicos).</li>
+          <li>Clima: INUMET (temperatura, precipitación, humedad).</li>
+          <li>Producción: UAM (series de Manzana).</li>
+          <li>Precios: MEF (relevamiento precios consumidor).</li>
         </ul>
       </section>
     </main>
   </div>
 
   <footer class="app-footer">
-    <p>Este tablero descarga y normaliza datos públicos, cruza clima con producción y precios por día y región, y los muestra de forma filtrable.</p>
+    <p>Este tablero descarga y normaliza datos públicos, cruza clima con producción y precios por período y región, y los muestra de forma filtrable.</p>
     <p>Ministerio de Ganadería, Agricultura y Pesca · Integración de vistas virtuales</p>
   </footer>
 
 <script>
-  // Evita boots múltiples si el script se evalúa más de una vez (Vercel dev, HMR, iframes, etc.)
+  // Evita boots múltiples (HMR / doble render dev)
   if (window.__MGAP_BOOTED__) {
-    console.log("[frontend] Boot ya ejecutado, se omite inicialización duplicada");
+    console.log("[frontend] Boot ya ejecutado, se omite");
   } else {
     window.__MGAP_BOOTED__ = true;
 
-    // ================= Config: backend =================
     const API_URL = "/api/main";
-
-    // ================= Helpers: numeric, dates =================
 
     function numOrNull(v){
       if(v === undefined || v === null || v === "") return null;
@@ -602,7 +600,7 @@
       return arr.reduce((a,b)=>a+b,0);
     }
 
-    // ================= Aggregation helpers =================
+    // ===== Aggregation helpers =====
 
     function ymdParts(fechaStr) {
       const parts = String(fechaStr).split("-");
@@ -620,9 +618,9 @@
       return {
         count: 0,
         lluvia_mm_sum: 0,
-        t_min_list: [],
-        t_max_list: [],
-        prod_sum: 0,
+        temp_list: [],
+        hum_list: [],
+        prod_sum_tn: 0,
         price_list: [],
         origenes: new Set(),
         sampleFecha: null,
@@ -637,14 +635,14 @@
       if (row.lluvia_mm != null && !Number.isNaN(row.lluvia_mm)) {
         acc.lluvia_mm_sum += Number(row.lluvia_mm);
       }
-      if (row.t_min != null && !Number.isNaN(row.t_min)) {
-        acc.t_min_list.push(Number(row.t_min));
+      if (row.temp_c != null && !Number.isNaN(row.temp_c)) {
+        acc.temp_list.push(Number(row.temp_c));
       }
-      if (row.t_max != null && !Number.isNaN(row.t_max)) {
-        acc.t_max_list.push(Number(row.t_max));
+      if (row.hum_pje != null && !Number.isNaN(row.hum_pje)) {
+        acc.hum_list.push(Number(row.hum_pje));
       }
       if (row.produccion_tn != null && !Number.isNaN(row.produccion_tn)) {
-        acc.prod_sum += Number(row.produccion_tn);
+        acc.prod_sum_tn += Number(row.produccion_tn);
       }
       if (row.precio_kg != null && !Number.isNaN(row.precio_kg)) {
         acc.price_list.push(Number(row.precio_kg));
@@ -662,11 +660,11 @@
 
     function finalizeAggRecord(acc, meta){
       const lluvia_mm = acc.lluvia_mm_sum || null;
-      const t_min = acc.t_min_list.length ? Math.min(...acc.t_min_list) : null;
-      const t_max = acc.t_max_list.length ? Math.max(...acc.t_max_list) : null;
-      const produccion_tn = acc.prod_sum || null;
+      const temp_c = acc.temp_list.length ? avg(acc.temp_list) : null;
+      const hum_pje = acc.hum_list.length ? avg(acc.hum_list) : null;
+      const produccion_tn = acc.prod_sum_tn || null;
       const precio_kg = acc.price_list.length
-        ? acc.price_list.reduce((a,b)=>a+b,0)/acc.price_list.length
+        ? avg(acc.price_list)
         : null;
 
       const origen_fuente = Array.from(acc.origenes).join(" + ") || null;
@@ -685,8 +683,8 @@
         region: acc.sampleRegion,
         fruta: acc.sampleFruta,
         lluvia_mm,
-        t_min,
-        t_max,
+        temp_c,
+        hum_pje,
         produccion_tn,
         precio_kg,
         origen_fuente
@@ -752,7 +750,7 @@
       return out;
     }
 
-    // ================= State & DOM refs =================
+    // ===== State & DOM =====
 
     let combinedRows = [];
 
@@ -774,7 +772,7 @@
     const resetFiltersBtn   = document.getElementById("resetFiltersBtn");
     const exportCsvBtn      = document.getElementById("exportCsvBtn");
 
-    const kpiTempMax        = document.getElementById("kpiTempMax");
+    const kpiTemp           = document.getElementById("kpiTemp");
     const kpiTempMeta       = document.getElementById("kpiTempMeta");
     const kpiProduction     = document.getElementById("kpiProduction");
     const kpiProdMeta       = document.getElementById("kpiProdMeta");
@@ -790,7 +788,7 @@
     const loadingOverlay = document.getElementById("loadingOverlay");
     const loadingTextEl  = document.getElementById("loadingText");
 
-    // ================= Loading UI =================
+    // ===== Loading UI =====
 
     function setLoading(isLoading, message){
       if (message) loadingTextEl.textContent = message;
@@ -805,7 +803,7 @@
       });
     }
 
-    // ================= Backend integration =================
+    // ===== Backend integration =====
 
     async function fetchBackendTable(){
       console.log("[frontend] Llamando API:", API_URL);
@@ -831,26 +829,36 @@
       }
 
       const mapped = rows
-      .map(r => {
-        const mesAnio =
-          r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
+        .map(r => {
+          const mesAnio =
+            r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
+          const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
 
-        const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
+          const region =
+            r.Departamento ?? r.departamento ?? r.region ?? null;
 
-        return {
-          fecha,
-          region: r.Departamento ?? r.departamento ?? r.region ?? null,
-          fruta: null,
-          lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
-          t_min: null,
-          t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
-          produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
-          precio_kg: numOrNull(r.Precio_kg ?? r.precio_kg),
-          origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
-        };
-      })
-      .filter(r => r.fecha);
+          const lluvia_mm = numOrNull(r.Precip_Total_mm ?? r.precip_total_mm);
+          const temp_c    = numOrNull(r.Temp_Media_C ?? r.temp_media_c);
+          const hum_pje   = numOrNull(r.Hum_Media_Pje ?? r.hum_media_pje);
 
+          const prodKg    = numOrNull(r.Produccion_kg ?? r.produccion_kg);
+          const produccion_tn = prodKg != null ? prodKg / 1000 : numOrNull(r.produccion_tn);
+
+          const precio_kg = numOrNull(r.Precio_kg ?? r.precio_kg);
+
+          return {
+            fecha,
+            region,
+            fruta: "Manzana", // dataset agregado solo para manzana
+            lluvia_mm,
+            temp_c,
+            hum_pje,
+            produccion_tn,
+            precio_kg,
+            origen_fuente: r.origen_fuente || "INUMET_temperatura, INUMET_humedad, INUMET_precipitaciones, UAM_produccion, MEF_precios"
+          };
+        })
+        .filter(r => r.fecha && r.region);
 
       console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
       return mapped;
@@ -877,7 +885,7 @@
       }
     }
 
-    // ================= Rendering =================
+    // ===== Rendering =====
 
     function toDateStrict(s){
       if (!s) return new Date(NaN);
@@ -914,21 +922,21 @@
     function renderKPIs(){
       const d = state.filteredData;
       if (!d.length){
-        kpiTempMax.textContent = "--"; kpiTempMeta.textContent = "Sin datos en rango";
+        kpiTemp.textContent = "--"; kpiTempMeta.textContent = "Sin datos en rango";
         kpiProduction.textContent = "--"; kpiProdMeta.textContent = "Sin datos en rango";
         kpiPrice.textContent = "--"; kpiPriceMeta.textContent = "Sin datos en rango";
         return;
       }
 
-      const avgTmax   = avg(d.filter(r=>r.t_max!=null).map(r=>r.t_max));
+      const avgTemp   = avg(d.filter(r=>r.temp_c!=null).map(r=>r.temp_c));
       const totalProd = sum(d.filter(r=>r.produccion_tn!=null).map(r=>r.produccion_tn));
       const avgPrice  = avg(d.filter(r=>r.precio_kg!=null).map(r=>r.precio_kg));
       const aggTxt = aggLabelEs[state.agg] || "";
 
-      kpiTempMax.textContent   = fmt1(avgTmax);
+      kpiTemp.textContent      = fmt1(avgTemp);
       kpiTempMeta.textContent  = `Promedio ${aggTxt}`;
 
-      kpiProduction.textContent = totalProd ?? "--";
+      kpiProduction.textContent = totalProd != null ? fmt1(totalProd) : "--";
       kpiProdMeta.textContent   = `Suma ${aggTxt}`;
 
       kpiPrice.textContent     = fmt1(avgPrice);
@@ -954,11 +962,11 @@
           formatDateEs(row.fecha),
           row.region ?? "",
           row.fruta ?? "",
-          row.lluvia_mm ?? "",
-          row.t_min ?? "",
-          row.t_max ?? "",
-          row.produccion_tn ?? "",
-          row.precio_kg ?? "",
+          row.lluvia_mm != null ? fmt1(row.lluvia_mm) : "",
+          row.temp_c != null ? fmt1(row.temp_c) : "",
+          row.hum_pje != null ? fmt1(row.hum_pje) : "",
+          row.produccion_tn != null ? fmt1(row.produccion_tn) : "",
+          row.precio_kg != null ? fmt1(row.precio_kg) : "",
           row.origen_fuente ?? ""
         ];
         cells.forEach(v=>{
@@ -1067,11 +1075,13 @@
     }
 
     function renderCharts(){
+      renderKPIs();
+
       drawLineChart(
         tempCtx,
-        state.filteredData.filter(r=>r.t_max!=null),
+        state.filteredData.filter(r=>r.temp_c!=null),
         "fecha",
-        "t_max"
+        "temp_c"
       );
       drawLineChart(
         prodCtx,
@@ -1119,7 +1129,7 @@
       state.agg       = aggSelect.value;
     }
 
-    // ================= Events =================
+    // ===== Events =====
 
     applyFiltersBtn.addEventListener("click", ()=>{
       state.fruit     = fruitSelect.value;
@@ -1142,7 +1152,7 @@
       }
       const headers=[
         "fecha","region","fruta",
-        "lluvia_mm","t_min","t_max",
+        "lluvia_mm","temp_c","hum_pje",
         "produccion_tn","precio_kg",
         "origen_fuente"
       ];
@@ -1162,7 +1172,7 @@
       URL.revokeObjectURL(url);
     });
 
-    // ================= Boot (con guardia adicional) =================
+    // ===== Boot =====
 
     let dataLoaded = false;
     async function loadDataOnce(){
