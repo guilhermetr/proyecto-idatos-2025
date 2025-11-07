@@ -347,6 +347,9 @@ def mediador() -> pd.DataFrame:
     df_precios = integrated_data['MEF_precios']
     df_establecimientos = integrated_data['MEF_establecimientos']
 
+    print("Precios antes: ", df_precios[1:5])
+    print("Establecimientos: ", df_establecimientos[1:5])
+
     # Merge datasets
     merged = pd.merge(
         df_precios,
@@ -355,6 +358,8 @@ def mediador() -> pd.DataFrame:
         right_on="idestablecimientos",
         how="inner"
     )
+
+    print("Merged precios-establecimientos: ", merged[1:5])
     
     # Parse date and extract year-month
     merged['fecha'] = pd.to_datetime(merged['fecha'], format='mixed')
@@ -372,6 +377,8 @@ def mediador() -> pd.DataFrame:
 
     # Keep only relevant columns
     df_precios_mensual = grouped[['Mes_año', 'Departamento', 'Precio_kg']]
+
+    print("Precios procesados: ", df_precios_mensual[1:5])
     print("Éxito")
     
     # 3.5. FUSIÓN DE INSTANCIAS (CONSTRUCCIÓN DEL ESQUEMA GLOBAL VIRTUAL)
