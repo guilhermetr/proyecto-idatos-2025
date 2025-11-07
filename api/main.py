@@ -325,6 +325,8 @@ def construir_precios_mensual(integrated_data: dict) -> pd.DataFrame:
     df_precios = integrated_data.get("MEF_precios", pd.DataFrame()).copy()
     df_est = integrated_data.get("MEF_establecimientos", pd.DataFrame()).copy()
 
+    print(df_precios[0:5])
+
     if df_precios.empty or df_est.empty:
         print("[mediador] Precios: faltan MEF_precios o MEF_establecimientos")
         return pd.DataFrame()
@@ -395,6 +397,8 @@ def mediador() -> pd.DataFrame:
     df_clima_m = construir_clima_mensual(integrated_data)
     df_prod_m = construir_produccion_mensual(integrated_data)
     df_prec_m = construir_precios_mensual(integrated_data)
+
+    print(df_prec_m[0:5])
 
     if df_clima_m.empty and df_prod_m.empty and df_prec_m.empty:
         print("[mediador] Todas las vistas parciales están vacías.")
