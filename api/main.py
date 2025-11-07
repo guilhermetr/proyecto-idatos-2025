@@ -195,26 +195,26 @@ def mediador() -> pd.DataFrame:
         print("[mediador] Sin datos integrados")
         return pd.DataFrame()
 
-    # ---------------- INUMET: clima horario -> mensual ----------------
+        # ---------------- INUMET: clima horario -> mensual ----------------
     try:
         df_temp = integrated_data['INUMET_temperatura'].rename(columns={'temp_aire': 'temperatura_c'})
         df_hum = integrated_data['INUMET_humedad'].rename(columns={'hum_relativa': 'humedad_pje'})
         df_precip = integrated_data['INUMET_precipitaciones'].rename(columns={'precip_horario': 'precipitacion_mm'})
-        df_est = integrated_data['INUMET_estaciones']
+        df_est = integrated_data.get('INUMET_estaciones', pd.DataFrame())
     except KeyError as e:
         print(f"[mediador] Falta fuente INUMET esperada: {e}")
         return pd.DataFrame()
 
     # Fechas a datetime
-    for df in (df_temp, df_hum, df_precip):
-        if 'fecha' in df.columns:
-            df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+    for df_src in (df_temp, df_hum, df_precip):
+        if 'fecha' in df_src.columns:
+            df_src['fecha'] = pd.to_datetime(df_src['fecha'], errors='coerce')
 
     # Origen combinado
-    origenes_clima = []
-    for key in ['INUMET_temperatura', 'INUMET_humedad', 'INUMET_precipitaciones']:
-        if key in integrated_data and not integrated_data[key].empty:
-            origenes_clima.append(key)
+    origenes_clima = [
+        key for key in ['INUMET_temperatura', 'INUMET_humedad', 'INUMET_precipitaciones']
+        if key in integrated_data and not integrated_data[key].empty
+    ]
     origen_fuente_clima_combinado = ', '.join(origenes_clima) if origenes_clima else 'INUMET'
 
     # Merge horario: temp + hum + precip por (fecha, estacion_id)
@@ -229,12 +229,27 @@ def mediador() -> pd.DataFrame:
         how='outer'
     )
 
-    # Añadir departamento (inner join: solo estaciones mapeadas)
-    df_clima = df_clima.merge(
-        df_est[['estacion_id', 'departamento']],
-        on='estacion_id',
-        how='inner'
-    )
+    # Añadir departamento si tenemos tabla de estaciones
+    if not df_est.empty and 'estacion_id' in df_est.columns:
+        df_clima = df_clima.merge(
+            df_est[['estacion_id', 'departamento']],
+            on='estacion_id',
+            how='left'   # <- antes era inner
+        )
+    else:
+        df_clima['departamento'] = pd.NA
+
+    # Fallback: si nadie tiene departamento, usar estacion_id para no perder todo
+    if df_clima['departamento'].notna().sum() == 0:
+        print("[mediador] Advertencia: sin match estacion_id-estaciones; usando estacion_id como Departamento.")
+        df_clima['departamento'] = df_clima['estacion_id']
+
+    # Eliminar filas sin fecha o sin 'departamento'
+    df_clima = df_clima.dropna(subset=['fecha', 'departamento'])
+
+    if df_clima.empty:
+        print("[mediador] Clima integrado vacío después de joins.")
+        return pd.DataFrame()
 
     # Clave temporal mensual
     df_clima['Mes_año'] = df_clima['fecha'].dt.to_period('M')
@@ -249,6 +264,10 @@ def mediador() -> pd.DataFrame:
         hum_media_pje=('humedad_pje', 'mean')
     )
 
+    if df_clima_mensual.empty:
+        print("[mediador] Agregación mensual de clima vacía.")
+        return pd.DataFrame()
+
     # Redondeo
     df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']] = (
         df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']].round(1)
@@ -262,6 +281,7 @@ def mediador() -> pd.DataFrame:
         'hum_media_pje': 'Hum_Media_Pje'
     })
     df_clima_mensual['origen_fuente'] = origen_fuente_clima_combinado
+
 
     # ---------------- UAM: producción mensual (Manzana) ----------------
     df_produccion_mensual = pd.DataFrame()
