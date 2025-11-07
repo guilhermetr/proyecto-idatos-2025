@@ -435,12 +435,6 @@
   </footer>
 
 <script>
-  // Evita doble boot (dev / HMR)
-  if (window.__MGAP_BOOTED__) {
-    console.log("[frontend] Boot ya ejecutado, se omite");
-  } else {
-    window.__MGAP_BOOTED__ = true;
-
     const API_URL = "/api/main";
 
     // ================= Helpers =================
@@ -928,20 +922,9 @@
 
     // ================= Boot =================
 
-    let dataLoaded = false;
-    async function loadDataOnce(){
-      if (dataLoaded){
-        console.log("[frontend] Datos ya cargados, se omite nueva llamada");
-        return;
-      }
-      dataLoaded = true;
-      await loadData();
-    }
-
     (async function boot(){
-      await loadDataOnce();
+      await loadData();
     })();
-  }
 </script>
 
 </body>
