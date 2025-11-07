@@ -407,13 +407,21 @@ class handler(BaseHTTPRequestHandler):
                 body = json.dumps({"data": [], "warning": "No se pudo construir la vista global"}, ensure_ascii=False)
                 self.send_response(200)
             else:
-                records = [
-                    {k: (None if (isinstance(v, float) and (pd.isna(v) or v != v)) else v)
-                    for k,v in row.items()}
-                    for row in records
-                ]
-
                 records = df.to_dict(orient="records")
+
+                # normalizar NaN → None, Period/Timestamp → str, etc.
+                cleaned = []
+                for row in records:
+                    clean_row = {}
+                    for k, v in row.items():
+                        if isinstance(v, float) and (pd.isna(v) or v != v):
+                            clean_row[k] = None
+                        elif isinstance(v, (pd.Timestamp, pd.Period)):
+                            clean_row[k] = str(v)
+                        else:
+                            clean_row[k] = v
+                    cleaned.append(clean_row)
+                    
                 body = json.dumps({"data": records}, ensure_ascii=False)
 
                 self.send_response(200)
