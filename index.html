@@ -522,6 +522,7 @@
   </footer>
 
 <script>
+  // ================= Config: backend =================
   const API_URL = "/api/main";
 
   // ================= Helpers: numeric, dates =================
@@ -549,7 +550,7 @@
     m = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
     if (m) return `${m[3]}-${m[2]}-${m[1]}`;
 
-    // "YYYY-MM" (monthly)
+    // "YYYY-MM" (mensual)
     m = s.match(/^(\d{4})-(\d{2})$/);
     if (m) return `${m[1]}-${m[2]}`;
 
@@ -564,15 +565,12 @@
   }
 
   function formatDateEs(s){
-    // Quincena "YYYY-MM-Q1"
     let m = s.match(/^(\d{4})-(\d{2})-Q(\d)$/);
     if (m) return `Q${m[3]} ${m[2]}/${m[1]}`;
 
-    // Mes "YYYY-MM"
     m = s.match(/^(\d{4})-(\d{2})$/);
     if (m) return `${m[2]}/${m[1]}`;
 
-    // Día "YYYY-MM-DD"
     m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (m) return `${m[3]}/${m[2]}/${m[1]}`;
 
@@ -607,11 +605,10 @@
   // ================= Aggregation helpers =================
 
   function ymdParts(fechaStr) {
-    // Supports "YYYY-MM" and "YYYY-MM-DD"
     const parts = String(fechaStr).split("-");
     const yy = parseInt(parts[0], 10);
     const mm = parseInt(parts[1] ?? "1", 10);
-    const dd = parseInt(parts[2] ?? "1", 10); // if monthly, assume day 1
+    const dd = parseInt(parts[2] ?? "1", 10);
     return {yy, mm, dd};
   }
 
@@ -710,16 +707,13 @@
       let meta;
 
       if (mode === "day"){
-        // With monthly input, dd=1; effectively behaves like monthly.
         bucketKey = ["day", yy, mm, dd, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"day", yy, mm, dd};
       } else if (mode === "fortnight"){
-        // With monthly input, we map entire month to first quincena.
         const quin = quincenaFromDay(dd);
         bucketKey = ["fortnight", yy, mm, quin, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"fortnight", yy, mm, quincena: quin};
       } else {
-        // Mes
         bucketKey = ["month", yy, mm, row.region ?? "", row.fruta ?? ""].join("|");
         meta = {type:"month", yy, mm};
       }
@@ -815,50 +809,62 @@
   // ================= Backend integration =================
 
   async function fetchBackendTable(){
+    console.log("[frontend] Llamando API:", API_URL);
     const resp = await fetch(API_URL, { cache: "no-store" });
+    console.log("[frontend] Status:", resp.status);
+
     if(!resp.ok){
       throw new Error("Error al llamar al backend: " + resp.status);
     }
     const json = await resp.json();
+    console.log("[frontend] JSON crudo:", json);
 
-    // Expect shape: { data: [ { Mes_año, Departamento, Precip_Total_mm, Temp_Media_C, Hum_Media_Pje, Produccion_kg, ... } ] }
     const rows = Array.isArray(json.data)
       ? json.data
       : Array.isArray(json)
         ? json
         : [];
 
+    console.log("[frontend] Filas recibidas:", rows.length);
+
     if (!rows.length){
       return [];
     }
 
-    return rows
+    const mapped = rows
       .map(r => {
-        const mesAnio = r.Mes_año ?? r.mes_año ?? null;
+        const mesAnio =
+          r["Mes_año"] ??
+          r.Mes_año ??
+          r.mes_año ??
+          r.mes_ano ??
+          null;
+
         const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
 
         return {
-          // fecha mensual "YYYY-MM" (frontend helpers soportan este formato)
           fecha,
           region: r.Departamento ?? r.departamento ?? r.region ?? null,
           fruta: null,
           lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
-          // usamos Temp_Media_C como variable climática principal
           t_min: null,
           t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
-          // producción mensual integrada (puedes dividir por 1000 si quieres toneladas)
           produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
-          precio_kg: null, // precios aún no integrados
+          precio_kg: null,
           origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
         };
       })
-      .filter(row => row.fecha);
+      .filter(r => r.fecha);
+
+    console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
+    return mapped;
   }
 
   async function loadData(){
     try{
       setLoading(true, "Cargando datos integrados desde el mediador...");
       combinedRows = await fetchBackendTable();
+      window._debugRows = combinedRows; // para inspeccionar en consola
       initFilterControlsFromData();
       renderAll();
     }catch(e){
@@ -884,7 +890,6 @@
       return new Date(parts[0], parts[1]-1, parts[2]);
     }
     if (parts.length === 2){
-      // Monthly: assume day 1
       return new Date(parts[0], parts[1]-1, 1);
     }
     return new Date(NaN);
@@ -1107,8 +1112,9 @@
     const dates = combinedRows.map(r=>r.fecha).sort();
     const minDate = dates[0];
     const maxDate = dates[dates.length-1];
-    startDateInput.value = minDate || "";
-    endDateInput.value   = maxDate || "";
+
+    startDateInput.value = minDate && minDate.length===7 ? `${minDate}-01` : (minDate || "");
+    endDateInput.value   = maxDate && maxDate.length===7 ? `${maxDate}-01` : (maxDate || "");
 
     state.fruit     = "";
     state.region    = "";
@@ -1122,8 +1128,8 @@
   applyFiltersBtn.addEventListener("click", ()=>{
     state.fruit     = fruitSelect.value;
     state.region    = regionSelect.value;
-    state.startDate = startDateInput.value;
-    state.endDate   = endDateInput.value;
+    state.startDate = startDateInput.value || state.startDate;
+    state.endDate   = endDateInput.value   || state.endDate;
     state.agg       = aggSelect.value;
     renderAll();
   });
@@ -1170,7 +1176,6 @@
     await loadData();
   })();
 </script>
-
 
 </body>
 </html>
