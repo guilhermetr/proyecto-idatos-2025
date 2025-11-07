@@ -72,7 +72,7 @@ def wrapper_fuentes(source_name: str, url: str) -> pd.DataFrame:
     df = pd.DataFrame()
 
     try:
-        resp = requests.get(url, timeout=(5, 120))
+        resp = requests.get(url, timeout=180)
         resp.raise_for_status()
         content = StringIO(resp.text)
 
