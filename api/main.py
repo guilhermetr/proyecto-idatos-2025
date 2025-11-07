@@ -170,310 +170,250 @@ def wrapper_web_scraping_estaciones(source_name: str, url: str) -> pd.DataFrame:
 # 3. Mediador GAV
 # -----------------------------------------------------------------------------
 
-def construir_clima_mensual(integrated_data: dict) -> pd.DataFrame:
-    df_temp = integrated_data.get("INUMET_temperatura", pd.DataFrame()).copy()
-    df_hum = integrated_data.get("INUMET_humedad", pd.DataFrame()).copy()
-    df_precip = integrated_data.get("INUMET_precipitaciones", pd.DataFrame()).copy()
-    df_est = integrated_data.get("INUMET_estaciones", pd.DataFrame()).copy()
+def mediador() -> pd.DataFrame:
+    """
+    Función principal del Mediador. Orquesta la carga (Wrappers),
+    resuelve las heterogeneidades semánticas y construye el Esquema Global Virtual.
+    """
+    # 3.1. FASE DE CARGA Y NORMALIZACIÓN (ORQUESTACIÓN DE WRAPPERS)
+    # El diccionario 'integrated_data' simula la memoria del Mediador para el procesamiento GAV
+    integrated_data = {}
 
-    # Renombres suaves
-    if not df_temp.empty and "temp_aire" in df_temp.columns:
-        df_temp = df_temp.rename(columns={"temp_aire": "temperatura_c"})
-    if not df_hum.empty and "hum_relativa" in df_hum.columns:
-        df_hum = df_hum.rename(columns={"hum_relativa": "humedad_pje"})
-    if not df_precip.empty and "precip_horario" in df_precip.columns:
-        df_precip = df_precip.rename(columns={"precip_horario": "precipitacion_mm"})
+    print("\n----------------------------------------------------------------------------------------------------")
+    print("INICIO DE LA FASE DE EXTRACCIÓN/CARGA (WRAPPERS)")
+    print("----------------------------------------------------------------------------------------------------")
 
-    if df_temp.empty and df_hum.empty and df_precip.empty:
-        print("[mediador] No se pudo cargar ninguna serie climática de INUMET.")
-        return pd.DataFrame()
+    for source_name, url in DATA_SOURCES.items():
+        # Llamada a la Capa de Acceso (Wrapper)
+        if "INUMET_estaciones" in source_name:
+            df_source = wrapper_web_scraping_estaciones(source_name, url)
+        else:
+            df_source = wrapper_fuentes(source_name, url)
+        
+        if not df_source.empty:
+            integrated_data[source_name] = df_source
 
-    # Parseo fechas
-    for df_src in (df_temp, df_hum, df_precip):
-        if not df_src.empty and "fecha" in df_src.columns:
-            df_src["fecha"] = pd.to_datetime(df_src["fecha"], errors="coerce")
+        # Pausa para evitar bloqueos del servidor
+        time.sleep(1)
 
-    # Base clima
-    if not df_temp.empty:
-        df_clima = df_temp[["fecha", "estacion_id", "temperatura_c"]].copy()
-    elif not df_hum.empty:
-        df_clima = df_hum[["fecha", "estacion_id"]].copy()
-    else:
-        df_clima = df_precip[["fecha", "estacion_id"]].copy()
+    print("\n----------------------------------------------------------------------------------------------------")
+    print("INICIO DE LA CONSTRUCCIÓN DEL ESQUEMA GLOBAL (RESOLUCIÓN DE HETEROGENEIDADES E INTEGRACIÓN FINAL)")
+    print("----------------------------------------------------------------------------------------------------")
 
-    # Merge humedad
-    if not df_hum.empty and "humedad_pje" in df_hum.columns:
-        df_clima = df_clima.merge(
-            df_hum[["fecha", "estacion_id", "humedad_pje"]],
-            on=["fecha", "estacion_id"],
-            how="outer"
-        )
+    if not integrated_data:
+        print("Advertencia: No se pudo cargar ninguna fuente.")
+        return integrated_data # Return empty dictionary
 
-    # Merge precip
-    if not df_precip.empty and "precipitacion_mm" in df_precip.columns:
-        df_clima = df_clima.merge(
-            df_precip[["fecha", "estacion_id", "precipitacion_mm"]],
-            on=["fecha", "estacion_id"],
-            how="outer"
-        )
+    # 3.2. RESOLUCIÓN DE HETEROGENEIDADES CLIMÁTICAS (INUMET)
+    
+    print("--- Resolviendo heterogeneidades climáticas (INUMET)")
+    
+    # Unificación de Datos Climáticos Horarios (Por Enriquecimiento de Clave)
+    df_temp = integrated_data['INUMET_temperatura'].rename(columns={'temp_aire': 'temperatura_c'})
+    df_hum = integrated_data['INUMET_humedad'].rename(columns={'hum_relativa': 'humedad_pje'})
+    df_precip = integrated_data['INUMET_precipitaciones'].rename(columns={'precip_horario': 'precipitacion_mm'})
+    df_estaciones = integrated_data['INUMET_estaciones']
+    
+    # Pre-procesamiento de fechas y claves
+    # Conversión de Fecha/Hora
+    df_temp['fecha'] = pd.to_datetime(df_temp['fecha'], errors='coerce')
+    df_hum['fecha'] = pd.to_datetime(df_hum['fecha'], errors='coerce')
+    df_precip['fecha'] = pd.to_datetime(df_precip['fecha'], errors='coerce')
 
-    # Merge estaciones
-    if not df_est.empty and "estacion_id" in df_est.columns:
-        df_clima = df_clima.merge(
-            df_est[["estacion_id", "departamento"]],
-            on="estacion_id",
-            how="left"
-        )
-    else:
-        df_clima["departamento"] = pd.NA
+    # Fusión inicial de clima (Horario)
+    origen_temp = df_temp['origen_fuente'].iloc[0] 
+    origen_hum = df_hum['origen_fuente'].iloc[0]  
+    origen_precip = df_precip['origen_fuente'].iloc[0]
+    lista_origenes_clima = [origen_precip, origen_temp, origen_hum]
+    origen_fuente_clima_combinado = ', '.join(lista_origenes_clima)
 
-    if df_clima["departamento"].notna().sum() == 0:
-        print("[mediador] Advertencia: sin match estacion_id-estaciones; usando estacion_id como Departamento.")
-        df_clima["departamento"] = df_clima["estacion_id"]
+    df_clima_horario = df_temp.merge(df_hum[['fecha', 'estacion_id', 'humedad_pje']], 
+                                     on=['fecha', 'estacion_id'], how='outer')
+    df_clima_horario = df_clima_horario.merge(df_precip[['fecha', 'estacion_id', 'precipitacion_mm']],
+                                              on=['fecha', 'estacion_id'], how='outer')
+    
+    # Resolución de Granularidad Espacial (Estación -> Departamento/Zona) 
+    # Se añade el departamento a cada registro de clima (Enriquecimiento) y se descartan los registros sin ubicación estacion->departamento
+    df_clima_horario = df_clima_horario.merge(df_estaciones[['estacion_id', 'departamento']], 
+                                              left_on='estacion_id', right_on='estacion_id', how='inner')
 
-    df_clima = df_clima.dropna(subset=["fecha", "departamento"])
-    if df_clima.empty:
-        print("[mediador] Clima integrado vacío después de limpieza.")
-        return pd.DataFrame()
+    # Resolución de Granularidad Temporal (Horario -> Mensual) 
+    # Se define la clave temporal (Mes_año) para el Esquema Global 
+    df_clima_horario['Mes_año'] = df_clima_horario['fecha'].dt.to_period('M')#.dt.to_timestamp()
+    
+    # Agregación a nivel Mensual (Mes_año, Departamento)
+    df_clima_mensual = df_clima_horario.groupby(['Mes_año', 'departamento']).agg(
+        # Suma total para Precipitación
+        precip_total_mm=('precipitacion_mm', 'sum'), 
+        # Promedio para Temperatura y Humedad
+        temp_media_c=('temperatura_c', 'mean'), 
+        hum_media_pje=('humedad_pje', 'mean')
+    ).reset_index()
 
-    # Asegurar cols numéricas
-    for col in ["temperatura_c", "humedad_pje", "precipitacion_mm"]:
-        if col not in df_clima.columns:
-            df_clima[col] = pd.NA
+    # APLICAR REDONDEO: Todas las cifras numéricas a un solo dígito decimal.
+    df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']] = df_clima_mensual[['precip_total_mm', 'temp_media_c', 'hum_media_pje']].round(1)
+    
+    df_clima_mensual = df_clima_mensual.rename(columns={'precip_total_mm': 'Precip_Total_mm'})
+    df_clima_mensual = df_clima_mensual.rename(columns={'temp_media_c': 'Temp_Media_C'})
+    df_clima_mensual = df_clima_mensual.rename(columns={'hum_media_pje': 'Hum_Media_Pje'})
+    df_clima_mensual = df_clima_mensual.rename(columns={'departamento': 'Departamento'})
+    # Agregar data provenance
+    df_clima_mensual['origen_fuente'] = origen_fuente_clima_combinado 
+    
+    print("Éxito")
 
-    # Mes_año mensual
-    df_clima["Mes_año"] = df_clima["fecha"].dt.to_period("M")
+    # 3.3. RESOLUCIÓN DE HETEROGENEIDADES DE PRODUCCIÓN (UAM)
+    
+    print("--- Resolviendo heterogeneidades de producción (UAM)")
+    df_produccion = integrated_data['UAM_produccion']
+    # df_filtrado_produccion ahora solo contiene las filas donde la columna 'especie' tiene exactamente el valor 'Manzana'.
+    df_filtrado_produccion = df_produccion[df_produccion['especie'] == 'Manzana']
 
-    # Agregación mensual por Departamento
-    df_clima_mensual = df_clima.groupby(
-        ["Mes_año", "departamento"],
-        as_index=False
-    ).agg(
-        Precip_Total_mm=("precipitacion_mm", "sum"),
-        Temp_Media_C=("temperatura_c", "mean"),
-        Hum_Media_Pje=("humedad_pje", "mean"),
+    # Columnas a eliminar 
+    COLUMNAS_A_ELIMINAR = ['grupo', 'variedad', 'especie', 'unidad', 'origen_fuente']
+
+    # Columnas que contienen los valores de los meses
+    COLUMNAS_MESES = [col for col in df_filtrado_produccion.columns if col not in COLUMNAS_A_ELIMINAR]
+
+    # Eliminar las columnas que no son necesarias para el Esquema Global
+    df_produccion_bruto_clean = df_filtrado_produccion.drop(columns=COLUMNAS_A_ELIMINAR, errors='ignore')
+
+    # Aplicar el Pivote Inverso (melt)
+    df_produccion_final = df_produccion_bruto_clean.melt(
+        # Nombre de la nueva columna que contendrá los encabezados de los meses (ej. 'ene07')
+        var_name='Mes_Bruto',
+        # Nombre de la nueva columna que contendrá los valores (producción)
+        value_name='Produccion_kg'
     )
 
-    if df_clima_mensual.empty:
-        print("[mediador] Agregación mensual de clima vacía.")
-        return pd.DataFrame()
-
-    df_clima_mensual[["Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje"]] = (
-        df_clima_mensual[["Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje"]].round(1)
+    # Limpieza de caracteres no numéricos y conversión
+    # Eliminar espacios y puntos que actúan como separadores de miles
+    df_produccion_final['Produccion_kg'] = (
+        df_produccion_final['Produccion_kg']
+        .astype(str) # Asegurar que es string para las operaciones
+        .str.replace('.', '', regex=False) # Eliminar puntos (separador de miles)
+        .str.replace(' ', '', regex=False) # Eliminar espacios (posibles separadores de miles o basura)
+        .str.replace('-', '0', regex=False) # Reemplazar guiones (posibles nulos/faltantes) por cero
+        .str.replace(',', '.', regex=False) # Si hay comas, tratarlas como separador decimal (aunque parece no ser el caso)
     )
 
-    df_clima_mensual = df_clima_mensual.rename(columns={"departamento": "Departamento"})
-
-    # Origen combinado
-    origenes_clima = [
-        k for k in ["INUMET_temperatura", "INUMET_humedad", "INUMET_precipitaciones"]
-        if k in integrated_data and not integrated_data[k].empty
-    ]
-    df_clima_mensual["origen_fuente"] = ", ".join(origenes_clima) or "INUMET"
-
-    return df_clima_mensual
-
-
-def construir_produccion_mensual(integrated_data: dict) -> pd.DataFrame:
-    df_prod = integrated_data.get("UAM_produccion", pd.DataFrame()).copy()
-    if df_prod.empty:
-        return pd.DataFrame()
-
-    if "especie" in df_prod.columns:
-        df_prod = df_prod[df_prod["especie"] == "Manzana"]
-
-    columnas_a_eliminar = ["grupo", "variedad", "especie", "unidad", "origen_fuente"]
-    df_bruto = df_prod.drop(columns=columnas_a_eliminar, errors="ignore")
-
-    df_long = df_bruto.melt(
-        var_name="Mes_Bruto",
-        value_name="Produccion_kg"
+    # Convertir la columna al tipo numérico float (los valores no válidos se harán NaN)
+    df_produccion_final['Produccion_kg'] = pd.to_numeric(
+        df_produccion_final['Produccion_kg'], 
+        errors='coerce' # Convierte cualquier valor que no sea un número a NaN
     )
 
-    df_long["Produccion_kg"] = (
-        df_long["Produccion_kg"]
-        .astype(str)
-        .str.replace(".", "", regex=False)
-        .str.replace(" ", "", regex=False)
-        .str.replace("-", "0", regex=False)
-        .str.replace(",", ".", regex=False)
+    # Eliminar filas donde la producción es NaN después de la conversión
+    df_produccion_final = df_produccion_final.dropna(subset=['Produccion_kg'])
+
+    # Transformar la columna 'Mes_Bruto' a formato 'fecha' (yyyy-mm-01)
+
+    # Extracción y Mapeo del Mes (ej. 'ene07' -> '01')
+    df_produccion_final['Mes_Num'] = (
+        df_produccion_final['Mes_Bruto']
+        .str[:3] # Toma los primeros 3 caracteres ('ene', 'feb', etc.)
+        .map(MESES_MAP_ABR) # Mapea a '01', '02', etc.
     )
 
-    df_long["Produccion_kg"] = pd.to_numeric(df_long["Produccion_kg"], errors="coerce")
-    df_long = df_long.dropna(subset=["Produccion_kg"])
-
-    df_long["Mes_Num"] = df_long["Mes_Bruto"].str[:3].str.lower().map(MESES_MAP_ABR)
-    df_long["Año_Num"] = df_long["Mes_Bruto"].str[3:].apply(
-        lambda x: f"20{x}" if isinstance(x, str) and x.isdigit() else None
-    )
-    df_long = df_long.dropna(subset=["Mes_Num", "Año_Num"])
-
-    df_long["Fecha_Str"] = df_long["Mes_Num"] + "-" + df_long["Año_Num"]
-    df_long["Mes_año"] = pd.to_datetime(
-        df_long["Fecha_Str"], format="%m-%Y", errors="coerce"
-    ).dt.to_period("M")
-    df_long = df_long.dropna(subset=["Mes_año"])
-
-    df_prod_m = df_long.groupby("Mes_año", as_index=False).agg(
-        Produccion_kg=("Produccion_kg", "sum")
+    # Extracción y Conversión del Año (ej. 'ene07' -> '07' -> '2007')
+    df_produccion_final['Año_Num'] = (
+        df_produccion_final['Mes_Bruto']
+        .str[3:] # Toma los últimos 2 caracteres ('07', '25', etc.)
+        .apply(lambda x: f"20{x}") # Añade '20' al inicio (ej. '07' -> '2007')
     )
 
-    return df_prod_m
+    # Creación de la Cadena de Fecha Estándar (ej. '01-2007')
+    df_produccion_final['Fecha_Str'] = df_produccion_final['Mes_Num'] + '-' + df_produccion_final['Año_Num']
 
+    # Conversión Final a mes año
+    df_produccion_final['Mes_año'] = pd.to_datetime(
+        df_produccion_final['Fecha_Str'], 
+        format='%m-%Y' # Indicamos que el formato de entrada es Mes-Año
+    ).dt.to_period('M')
 
-def construir_precios_mensual(integrated_data: dict) -> pd.DataFrame:
-    df_precios = integrated_data.get("MEF_precios", pd.DataFrame()).copy()
-    df_est = integrated_data.get("MEF_establecimientos", pd.DataFrame()).copy()
+    # Limpieza final de las columnas temporales auxiliares
+    df_produccion_final = df_produccion_final.drop(columns=['Mes_Bruto', 'Mes_Num', 'Año_Num', 'Fecha_Str'])
 
-    print(df_precios[0:5])
+    # Agregación a nivel Mensual (Mes_año)
+    df_produccion_mensual = df_produccion_final.groupby(['Mes_año']).agg(
+        # Suma total de kilos
+        Produccion_kg=('Produccion_kg', 'sum')
+    ).reset_index()
+    
+    print("Éxito")
+    # 3.4. RESOLUCIÓN DE HETEROGENEIDADES DE PRECIOS (MEF)
 
-    if df_precios.empty or df_est.empty:
-        print("[mediador] Precios: faltan MEF_precios o MEF_establecimientos")
-        return pd.DataFrame()
+    print("--- Resolviendo heterogeneidades de precios (MEF)")
+    df_precios = integrated_data['MEF_precios']
+    df_establecimientos = integrated_data['MEF_establecimientos']
 
-    # Merge precios + establecimientos
+    # Merge datasets
     merged = pd.merge(
         df_precios,
-        df_est,
+        df_establecimientos,
         left_on="establecimiento",
         right_on="idestablecimientos",
         how="inner"
     )
+    
+    # Parse date and extract year-month
+    merged['fecha'] = pd.to_datetime(merged['fecha'], format='mixed')
+    merged = merged.dropna(subset=['fecha'])
+    merged['Mes_año'] = merged['fecha'].dt.to_period('M')
 
-    if "fecha" not in merged.columns or "precio" not in merged.columns:
-        print("[mediador] Precios: columnas 'fecha' o 'precio' no encontradas tras merge")
-        return pd.DataFrame()
-
-    merged["fecha"] = pd.to_datetime(merged["fecha"], errors="coerce", format="mixed")
-    merged = merged.dropna(subset=["fecha"])
-    merged["Mes_año"] = merged["fecha"].dt.to_period("M")
-
-    # group by depto + Mes_año
-    if "iddepto" not in merged.columns and "depto" not in merged.columns:
-        print("[mediador] Precios: columnas depto no encontradas")
-        return pd.DataFrame()
-
+    # Group by dept and year-month
     grouped = (
-        merged.groupby(["iddepto", "depto", "Mes_año"], as_index=False)
-        .agg({"precio": "mean"})
+        merged.groupby(['iddepto', 'depto', 'Mes_año'], as_index=False)
+        .agg({'precio': 'mean'})
     )
 
-    grouped["Precio_kg"] = grouped["precio"].round(2)
-    grouped["Departamento"] = grouped["depto"]
+    grouped['Precio_kg'] = grouped['precio'].round(2)
+    grouped['Departamento'] = grouped['depto']
 
-    df_precios_m = grouped[["Mes_año", "Departamento", "Precio_kg"]]
-    print(f"[mediador] Precios MEF_mensual: {len(df_precios_m)} filas")
-    return df_precios_m
+    # Keep only relevant columns
+    df_precios_mensual = grouped[['Mes_año', 'Departamento', 'Precio_kg']]
+    print("Éxito")
+    
+    # 3.5. FUSIÓN DE INSTANCIAS (CONSTRUCCIÓN DEL ESQUEMA GLOBAL VIRTUAL)
+    
+    # La Clave Global es: (Mes_año, Departamento) 
+    CLAVE_GLOBAL = ['Mes_año', 'Departamento']
+    
+    # Fusión 1: Clima + Producción (Outer Join para Cobertura y Huecos) 
+    
+    df_global = df_clima_mensual.merge(
+        df_produccion_mensual, 
+        on='Mes_año', 
+        how='outer'
+    )
+    
+    # Fusión 2: Resultado anterior + Precios (Outer Join)
+   
+    df_global = df_global.merge(
+        df_precios_mensual, 
+        on=['Mes_año', 'Departamento'], 
+        how='outer'
+    )
 
-
-def mediador() -> pd.DataFrame:
-    """
-    Orquesta:
-    - Carga fuentes con wrappers.
-    - Integra clima (INUMET) horario -> mensual por Departamento.
-    - Integra producción UAM (Manzana) mensual (sin departamento).
-    - Integra precios MEF mensuales por Departamento.
-    - Devuelve vista global mensual.
-    """
-    integrated_data = {}
-    print("[mediador] Inicio carga de fuentes")
-
-    for source_name, url in DATA_SOURCES.items():
-        if "INUMET_estaciones" in source_name:
-            df = wrapper_web_scraping_estaciones(source_name, url)
-        else:
-            df = wrapper_fuentes(source_name, url)
-
-        if not df.empty:
-            integrated_data[source_name] = df
-
-        time.sleep(0.2)
-
-    if not integrated_data:
-        print("[mediador] Sin datos integrados")
-        return pd.DataFrame()
-
-    # Construir subcomponentes
-    df_clima_m = construir_clima_mensual(integrated_data)
-    df_prod_m = construir_produccion_mensual(integrated_data)
-    df_prec_m = construir_precios_mensual(integrated_data)
-
-    print(df_prec_m[0:5])
-
-    if df_clima_m.empty and df_prod_m.empty and df_prec_m.empty:
-        print("[mediador] Todas las vistas parciales están vacías.")
-        return pd.DataFrame()
-
-    # Fusión global
-    if not df_clima_m.empty:
-        df_global = df_clima_m.copy()
-    elif not df_prec_m.empty:
-        df_global = df_prec_m.copy()
-    else:
-        df_global = df_prod_m.copy()
-
-    # Merge producción (solo por Mes_año, se replica por depto)
-    if not df_prod_m.empty:
-        df_global = df_global.merge(
-            df_prod_m,
-            on="Mes_año",
-            how="left"
-        )
-
-    # Merge precios
-    if not df_prec_m.empty:
-        join_keys = ["Mes_año", "Departamento"] if "Departamento" in df_global.columns else ["Mes_año"]
-        df_global = df_global.merge(
-            df_prec_m,
-            on=join_keys,
-            how="left"
-        )
-
-    # Asegurar columnas del esquema
-    for col in ["Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje",
-                "Produccion_kg", "Precio_kg", "Departamento"]:
-        if col not in df_global.columns:
-            df_global[col] = pd.NA
-
-    # Limpiar filas sin Mes_año o sin Departamento
-    if "Departamento" in df_global.columns:
-        df_global = df_global.dropna(subset=["Mes_año", "Departamento"])
-    else:
-        df_global = df_global.dropna(subset=["Mes_año"])
-
-    if df_global.empty:
-        print("[mediador] Vista global vacía después de limpieza.")
-        return pd.DataFrame()
-
-    # Convertir Mes_año a string (YYYY-MM) para el frontend
-    df_global["Mes_año"] = df_global["Mes_año"].astype(str)
-
-    # Recalcular origen_fuente aproximado por fila
-    def origen_row(row):
-        fuentes = []
-        if not pd.isna(row.get("Precip_Total_mm")) or not pd.isna(row.get("Temp_Media_C")) or not pd.isna(row.get("Hum_Media_Pje")):
-            fuentes.append("INUMET")
-        if not pd.isna(row.get("Produccion_kg")):
-            fuentes.append("UAM")
-        if not pd.isna(row.get("Precio_kg")):
-            fuentes.append("MEF")
-        return ", ".join(fuentes) if fuentes else None
-
-    df_global["origen_fuente"] = df_global.apply(origen_row, axis=1)
-
-    # Orden columnas para el frontend
-    cols = [
-        "Mes_año", "Departamento",
-        "Precip_Total_mm", "Temp_Media_C", "Hum_Media_Pje",
-        "Produccion_kg", "Precio_kg",
-        "origen_fuente"
+    # 3.6. RESULTADO FINAL (VISTA GLOBAL UNIFICADA)
+    
+    # Selecciona y ordena las columnas del Esquema Global Consolidado
+    ESQUEMA_GLOBAL_FINAL = [
+        'Mes_año', 'Departamento',
+        'Precip_Total_mm', 'Temp_Media_C', 'Hum_Media_Pje',
+        'Produccion_kg', 'Precio_kg'
+        #'origen_fuente'
     ]
-    df_global = df_global[cols]
+    
+    vista_global_final = df_global[ESQUEMA_GLOBAL_FINAL]
 
-    df_global = df_global.sort_values(["Mes_año", "Departamento"]).reset_index(drop=True)
-
-    print(f"[mediador] Filas en vista_global_final: {len(df_global)}")
-    return df_global
+    print("\n========================================================================")
+    print("VISTA GLOBAL UNIFICADA CONSTRUIDA (ESQUEMA GLOBAL VIRTUAL)")
+    print("========================================================================\n")
+    print(f"Filas totales integradas (solo Manzana): {len(vista_global_final)}")
+    
+    print("\nEsquema Final:")
+    return vista_global_final
 
 # -----------------------------------------------------------------------------
 # 4. Cache simple en memoria (dentro del runtime de la función)
