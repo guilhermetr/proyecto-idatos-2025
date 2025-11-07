@@ -407,6 +407,12 @@ class handler(BaseHTTPRequestHandler):
                 body = json.dumps({"data": [], "warning": "No se pudo construir la vista global"}, ensure_ascii=False)
                 self.send_response(200)
             else:
+                records = [
+                    {k: (None if (isinstance(v, float) and (pd.isna(v) or v != v)) else v)
+                    for k,v in row.items()}
+                    for row in records
+                ]
+
                 records = df.to_dict(orient="records")
                 body = json.dumps({"data": records}, ensure_ascii=False)
 
