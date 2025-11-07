@@ -831,25 +831,26 @@
       }
 
       const mapped = rows
-        .map(r => {
-          const mesAnio =
-            r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
+      .map(r => {
+        const mesAnio =
+          r["Mes_año"] ?? r.Mes_año ?? r.mes_año ?? r.mes_ano ?? null;
 
-          const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
+        const fecha = mesAnio ? String(mesAnio) : toIsoDate(r.fecha ?? r.date);
 
-          return {
-            fecha,
-            region: r.Departamento ?? r.departamento ?? r.region ?? null,
-            fruta: null,
-            lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
-            t_min: null,
-            t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
-            produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
-            precio_kg: null,
-            origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
-          };
-        })
-        .filter(r => r.fecha);
+        return {
+          fecha,
+          region: r.Departamento ?? r.departamento ?? r.region ?? null,
+          fruta: null,
+          lluvia_mm: numOrNull(r.Precip_Total_mm ?? r.precip_total_mm ?? r.lluvia_mm),
+          t_min: null,
+          t_max: numOrNull(r.Temp_Media_C ?? r.temp_media_c ?? r.t_max),
+          produccion_tn: numOrNull(r.Produccion_kg ?? r.produccion_kg ?? r.produccion_tn),
+          precio_kg: numOrNull(r.Precio_kg ?? r.precio_kg),
+          origen_fuente: r.origen_fuente || "INUMET, UAM, MEF"
+        };
+      })
+      .filter(r => r.fecha);
+
 
       console.log("[frontend] Mapeadas:", mapped.length, "ejemplo:", mapped[0]);
       return mapped;
