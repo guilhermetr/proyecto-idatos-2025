@@ -272,21 +272,9 @@ def mediador() -> pd.DataFrame:
 # 4) Utilidades de caché y JSON seguro
 # ---------------------------------------------------------------------
 
-CACHE_TTL = int(os.getenv("CACHE_TTL_SECONDS", "300"))
-_cache_df = None
-_cache_ts = 0.0
-
-def get_df_cached() -> pd.DataFrame:
-    global _cache_df, _cache_ts
-    now = time.time()
-    if _cache_df is not None and (now - _cache_ts) < CACHE_TTL:
-        print("[cache] usando df cacheado")
-        return _cache_df
-    print("[cache] recalculando mediador()")
-    df = mediador()
-    _cache_df = df
-    _cache_ts = now
-    return df
+CACHE_TTL = int(os.getenv("CACHE_TTL_SECONDS", "300"))  # 5 minutos por defecto
+_cache_payload = None
+_cache_expires_at = 0.0
 
 def df_to_json_rows(df: pd.DataFrame):
     records = df.to_dict(orient="records")
@@ -294,7 +282,7 @@ def df_to_json_rows(df: pd.DataFrame):
     for row in records:
         out = {}
         for k, v in row.items():
-            # pd.NA, NaN, NaT, None -> None
+            # NaN / NaT / pd.NA -> None
             try:
                 if pd.isna(v):
                     out[k] = None
@@ -309,9 +297,30 @@ def df_to_json_rows(df: pd.DataFrame):
         cleaned.append(out)
     return cleaned
 
-# ---------------------------------------------------------------------
-# 5) Vercel Python Function handler
-# ---------------------------------------------------------------------
+def get_cached_payload():
+    """
+    Usa memoria de la instancia para evitar recalcular mediador()
+    en cada request. Válido mientras la instancia siga viva.
+    """
+    global _cache_payload, _cache_expires_at
+
+    now = time.time()
+    if _cache_payload is not None and now < _cache_expires_at:
+        print("[cache] HIT")
+        return _cache_payload
+
+    print("[cache] MISS -> recalculando mediador()")
+    df = mediador()
+
+    if df.empty:
+        payload = {"data": [], "warning": "No se pudo construir la vista global"}
+    else:
+        rows = df_to_json_rows(df)
+        payload = {"data": rows}
+
+    _cache_payload = payload
+    _cache_expires_at = now + CACHE_TTL
+    return _cache_payload
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -323,19 +332,14 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
-            df = get_df_cached()
-
-            if df.empty:
-                payload = {"data": [], "warning": "No se pudo construir la vista global"}
-            else:
-                rows = df_to_json_rows(df)
-                payload = {"data": rows}
-
+            payload = get_cached_payload()
             body = json.dumps(payload, ensure_ascii=False, allow_nan=False)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
+            # Opcional: cache en el edge, ver siguiente sección
+            # self.send_header("Vercel-CDN-Cache-Control", "max-age=300")
             self.end_headers()
             self.wfile.write(body.encode("utf-8"))
 
