@@ -2,6 +2,8 @@
 import os
 import math
 import json
+import time
+import random  # <-- nuevo
 from http.server import BaseHTTPRequestHandler
 
 import pandas as pd
@@ -83,7 +85,6 @@ def sanitize_for_json(obj):
 def dataframe_to_json_records(df: pd.DataFrame):
     """
     Convierte el DataFrame en lista de dicts listo para JSON.
-
     - Asegura Mes_año como string si existe.
     - Reemplaza NaN por None.
     """
@@ -95,9 +96,7 @@ def dataframe_to_json_records(df: pd.DataFrame):
     if "Mes_año" in df.columns:
         df["Mes_año"] = df["Mes_año"].astype(str)
 
-    # NaN -> None
     df = df.where(pd.notnull(df), None)
-
     records = df.to_dict(orient="records")
     return sanitize_for_json(records)
 
@@ -138,6 +137,10 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            # Simula tiempo de fetch remoto (por ejemplo 200–800 ms)
+            delay = random.uniform(5, 10)
+            time.sleep(delay)
+
             df = load_df_vista_global()
             data = dataframe_to_json_records(df)
             self._send_json(200, {"data": data})
